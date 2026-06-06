@@ -1,0 +1,2 @@
+-- Aggregated supply, demand, and gap summary by resource type.
+-- TODO: Write query once schema and mismatch tables exist.

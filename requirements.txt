@@ -1,0 +1,9 @@
+requests
+pandas
+python-dotenv
+fastapi
+uvicorn
+streamlit
+plotly
+psycopg2-binary
+sqlalchemy

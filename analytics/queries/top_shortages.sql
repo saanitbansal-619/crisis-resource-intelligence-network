@@ -1,0 +1,2 @@
+-- Top resource shortages ranked by severity and affected population.
+-- TODO: Write query once schema and mismatch tables exist.

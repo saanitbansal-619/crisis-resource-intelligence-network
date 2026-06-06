@@ -1,0 +1,20 @@
+# Local PostgreSQL for development.
+# Start: docker compose up -d
+# Stop:  docker compose down
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: cri_postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: cri_user
+      POSTGRES_PASSWORD: cri_password
+      POSTGRES_DB: cri_db
+    volumes:
+      - cri_pgdata:/var/lib/postgresql/data
+
+volumes:
+  cri_pgdata:

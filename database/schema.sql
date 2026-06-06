@@ -1,0 +1,10 @@
+-- Crisis Resource Intelligence Network — PostgreSQL schema
+--
+-- This file will define tables for:
+--   - crises (events from ReliefWeb / GDACS)
+--   - humanitarian_reports (normalized report metadata)
+--   - resources (supply inventory by region)
+--   - resource_demands (estimated needs by crisis and resource type)
+--   - supply_demand_mismatches (computed shortage/surplus metrics)
+--
+-- TODO: Add CREATE TABLE statements in Week 2.

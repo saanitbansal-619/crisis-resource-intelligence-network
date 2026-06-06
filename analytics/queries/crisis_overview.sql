@@ -1,0 +1,2 @@
+-- High-level crisis overview with active alerts and resource status.
+-- TODO: Write query once schema and mismatch tables exist.

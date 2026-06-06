@@ -1,0 +1,7 @@
+-- Sample seed data for local development and dashboard demos.
+--
+-- Will include example crises, resource inventories, and demand estimates
+-- so the mismatch engine and Streamlit dashboard can be tested without
+-- live API calls.
+--
+-- TODO: Add INSERT statements in Week 2.

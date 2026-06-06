@@ -1,0 +1,2 @@
+-- Regions with resource surplus available for redistribution.
+-- TODO: Write query once schema and mismatch tables exist.
