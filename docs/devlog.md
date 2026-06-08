@@ -32,3 +32,7 @@ Key fields extracted:
 - disaster description
 
 This gives the project a real-time disaster alert feed that can later be combined with ReliefWeb humanitarian reports for crisis monitoring and resource mismatch analysis.
+
+## Week 2: Data Cleaning and Normalization
+
+Started transforming raw ReliefWeb and GDACS API responses into structured processed CSV files. The cleaning scripts extract key crisis/report metadata, standardize dates, handle nested JSON fields, and prepare the data for PostgreSQL loading.
