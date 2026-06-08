@@ -32,14 +32,32 @@ GDACS RSS    ───┘                                              │
 | RAG (planned)| embeddings + vector store           |
 | Local infra  | Docker Compose (PostgreSQL)         |
 
-## Current Status: Week 1 Setup
+## Current Status
 
-- Project skeleton with all module directories and placeholder files
-- Runnable ReliefWeb and GDACS ingestion scripts
-- FastAPI starter with health-check endpoints
-- Streamlit starter dashboard
-- PostgreSQL docker-compose configuration (not yet connected to app code)
-- ML and RAG modules stubbed for future sprints
+**Week 1 setup is complete.** Both external data sources are ingesting successfully in a local-only development environment.
+
+### Working features
+
+- ReliefWeb API ingestion with approved appname support (loaded from `.env`)
+- GDACS alert ingestion
+- Raw data saving to `data/raw/`
+- Basic pandas inspection of ReliefWeb reports and GDACS alerts
+- Local-only development setup (FastAPI and Streamlit starters included)
+
+### Next steps
+
+- Clean and normalize ReliefWeb/GDACS data
+- Design PostgreSQL schema
+- Load processed crisis data into PostgreSQL
+- Build simulated NGO resource inventory
+- Implement supply-demand mismatch scoring
+
+## Data Sources
+
+| Source | Description |
+|--------|-------------|
+| [ReliefWeb API](https://apidoc.reliefweb.int/) | Humanitarian reports and situation updates |
+| [GDACS](https://www.gdacs.org/) | Disaster alerts and crisis event metadata |
 
 ## How to Run the Initial Scripts
 
@@ -56,16 +74,10 @@ venv\Scripts\activate
 source venv/bin/activate
 
 pip install -r requirements.txt
-cp .env.example .env
+cp .env.example .env   # then set RELIEFWEB_APPNAME to your approved appname
 ```
 
-### 2. Start PostgreSQL (optional for Week 1)
-
-```bash
-docker compose up -d
-```
-
-### 3. Run ingestion scripts
+### 2. Run ingestion scripts
 
 ```bash
 python -m ingestion.reliefweb_ingest
@@ -76,7 +88,7 @@ Raw API responses are saved under `data/raw/`.
 
 > **Note:** ReliefWeb v2 requires a [pre-approved appname](https://apidoc.reliefweb.int/parameters#appname). Set `RELIEFWEB_APPNAME` in `.env` after approval. GDACS works without registration.
 
-### 4. Start the FastAPI backend
+### 3. Start the FastAPI backend
 
 ```bash
 uvicorn backend.main:app --reload
@@ -86,7 +98,7 @@ uvicorn backend.main:app --reload
 - Interactive docs: http://localhost:8000/docs
 - Health check: http://localhost:8000/health
 
-### 5. Start the Streamlit dashboard
+### 4. Start the Streamlit dashboard
 
 ```bash
 streamlit run dashboard/app.py
