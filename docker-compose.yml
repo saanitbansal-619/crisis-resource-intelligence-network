@@ -4,17 +4,17 @@
 
 services:
   postgres:
-    image: postgres:16
-    container_name: cri_postgres
+    image: postgres:15
+    container_name: crisis_resource_postgres
     restart: unless-stopped
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_USER: cri_user
-      POSTGRES_PASSWORD: cri_password
-      POSTGRES_DB: cri_db
+      POSTGRES_USER: crisis_user
+      POSTGRES_PASSWORD: crisis_password
+      POSTGRES_DB: crisis_resource_db
     volumes:
-      - cri_pgdata:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
 
 volumes:
-  cri_pgdata:
+  postgres_data:

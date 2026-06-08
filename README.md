@@ -36,7 +36,7 @@ GDACS RSS    ───┘                                              │
 
 **Week 1 setup is complete.** Both external data sources are ingesting successfully in a local-only development environment.
 
-**Week 2 in progress:** Raw API data is now converted into processed CSVs. ReliefWeb and GDACS data are normalized separately into `data/processed/`. These processed files will later be loaded into PostgreSQL.
+**Week 2 in progress:** Raw API data is converted into processed CSVs and loaded into a local PostgreSQL database. ReliefWeb and GDACS data are normalized separately, then upserted into `crisis_reports` and `gdacs_alerts` tables.
 
 ### Working features
 
@@ -44,15 +44,16 @@ GDACS RSS    ───┘                                              │
 - GDACS alert ingestion
 - Raw data saving to `data/raw/`
 - ReliefWeb and GDACS cleaning scripts producing processed CSVs in `data/processed/`
+- Local PostgreSQL database via Docker Compose
+- Schema and loader scripts for `crisis_reports` and `gdacs_alerts` tables
 - Basic pandas inspection of ReliefWeb reports and GDACS alerts
 - Local-only development setup (FastAPI and Streamlit starters included)
 
 ### Next steps
 
-- Design PostgreSQL schema
-- Load processed crisis data into PostgreSQL
 - Build simulated NGO resource inventory
 - Implement supply-demand mismatch scoring
+- Expose database tables through FastAPI endpoints
 
 ## Data Sources
 
@@ -79,6 +80,8 @@ pip install -r requirements.txt
 cp .env.example .env   # then set RELIEFWEB_APPNAME to your approved appname
 ```
 
+Environment setup is documented in [docs/env_setup.md](docs/env_setup.md).
+
 ### 2. Run ingestion scripts
 
 ```bash
@@ -104,6 +107,25 @@ Processed outputs are saved under `data/processed/`:
 - `gdacs_alerts_clean.csv`
 
 These files standardize dates, flatten nested fields, and prepare crisis metadata for PostgreSQL loading.
+
+## Local PostgreSQL Setup
+
+Start the local database, verify connectivity, and load processed CSVs into PostgreSQL tables.
+
+```bash
+docker compose up -d
+python -m database.test_connection
+python -m database.load_reports
+```
+
+`database/load_reports.py` reads `data/processed/reliefweb_reports_clean.csv` and `data/processed/gdacs_alerts_clean.csv`, creates tables from `database/schema.sql` if needed, and upserts rows into:
+
+| Table | Source CSV |
+|-------|------------|
+| `crisis_reports` | `reliefweb_reports_clean.csv` |
+| `gdacs_alerts` | `gdacs_alerts_clean.csv` |
+
+Copy `.env.example` to `.env` and set the `POSTGRES_*` variables (or `DATABASE_URL`) to match `docker-compose.yml`. Rerunning the loader updates existing rows without creating duplicates.
 
 ### 4. Start the FastAPI backend
 

@@ -36,3 +36,7 @@ This gives the project a real-time disaster alert feed that can later be combine
 ## Week 2: Data Cleaning and Normalization
 
 Started transforming raw ReliefWeb and GDACS API responses into structured processed CSV files. The cleaning scripts extract key crisis/report metadata, standardize dates, handle nested JSON fields, and prepare the data for PostgreSQL loading.
+
+## Week 2: PostgreSQL Database Setup
+
+Created a local PostgreSQL database with Docker Compose and added schema/loading scripts to move cleaned ReliefWeb and GDACS data into structured tables. The database layer allows the project to move beyond CSV files and support SQL-based analytics, FastAPI endpoints, and later dashboard queries.
