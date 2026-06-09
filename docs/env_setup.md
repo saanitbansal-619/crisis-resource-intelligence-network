@@ -5,9 +5,9 @@ The `.env` file is **local-only** and must never be committed to git. It stores 
 Copy the template from `.env.example` and create a plain-text `.env` file in the project root:
 
 ```
-DATABASE_URL=postgresql://crisis_user:crisis_password@127.0.0.1:5432/crisis_resource_db
+DATABASE_URL=postgresql://crisis_user:crisis_password@127.0.0.1:5433/crisis_resource_db
 POSTGRES_HOST=127.0.0.1
-POSTGRES_PORT=5432
+POSTGRES_PORT=5433
 POSTGRES_DB=crisis_resource_db
 POSTGRES_USER=crisis_user
 POSTGRES_PASSWORD=crisis_password
@@ -30,6 +30,10 @@ Replace `your_reliefweb_appname_here` with your approved ReliefWeb appname after
 - Do not paste shell commands into `.env` — only environment variable assignments.
 - `docker-compose.yml` is the source of truth for local PostgreSQL credentials. Your `.env` must match those values.
 
+## Port mapping
+
+Local development uses **host port 5433** mapped to **container port 5432**. This avoids conflicts with existing PostgreSQL installations that may already be listening on port 5432 on your machine. Python connects to `127.0.0.1:5433`; inside the container, Postgres still runs on port 5432.
+
 ## Verify dotenv loading
 
 From the project root:
@@ -41,7 +45,7 @@ python -c "from dotenv import load_dotenv; import os; load_dotenv('.env'); print
 Expected output:
 
 ```
-postgresql://crisis_user:crisis_password@127.0.0.1:5432/crisis_resource_db
+postgresql://crisis_user:crisis_password@127.0.0.1:5433/crisis_resource_db
 ```
 
 If this prints `None`, your `.env` file is missing, malformed, or not in the project root.

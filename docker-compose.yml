@@ -8,7 +8,7 @@ services:
     container_name: crisis_resource_postgres
     restart: unless-stopped
     ports:
-      - "5432:5432"
+      - "5433:5432"
     environment:
       POSTGRES_USER: crisis_user
       POSTGRES_PASSWORD: crisis_password

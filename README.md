@@ -112,6 +112,8 @@ These files standardize dates, flatten nested fields, and prepare crisis metadat
 
 Start the local database, verify connectivity, and load processed CSVs into PostgreSQL tables.
 
+Docker maps **host port 5433** to **container port 5432** so this project does not conflict with other PostgreSQL services on port 5432.
+
 ```bash
 docker compose up -d
 python -m database.test_connection
@@ -125,7 +127,7 @@ python -m database.load_reports
 | `crisis_reports` | `reliefweb_reports_clean.csv` |
 | `gdacs_alerts` | `gdacs_alerts_clean.csv` |
 
-Copy `.env.example` to `.env` and set the `POSTGRES_*` variables (or `DATABASE_URL`) to match `docker-compose.yml`. Rerunning the loader updates existing rows without creating duplicates.
+Copy `.env.example` to `.env` and set `DATABASE_URL` and `POSTGRES_PORT` to use port **5433** (matching `docker-compose.yml`). Rerunning the loader updates existing rows without creating duplicates.
 
 ### 4. Start the FastAPI backend
 

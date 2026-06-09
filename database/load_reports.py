@@ -23,7 +23,7 @@ SCHEMA_PATH = Path(__file__).resolve().parent / "schema.sql"
 RELIEFWEB_CSV = PROCESSED_DIR / "reliefweb_reports_clean.csv"
 GDACS_CSV = PROCESSED_DIR / "gdacs_alerts_clean.csv"
 
-load_dotenv(dotenv_path=ENV_PATH)
+load_dotenv(dotenv_path=ENV_PATH, override=True, encoding="utf-8-sig")
 
 
 def mask_database_url(url: str) -> str:
@@ -41,9 +41,23 @@ def mask_database_url(url: str) -> str:
     return url
 
 
+def _parse_database_url_manual(env_path: Path) -> str | None:
+    """Fallback parser for DATABASE_URL when load_dotenv misses it (e.g. BOM)."""
+    if not env_path.exists():
+        return None
+
+    with env_path.open(encoding="utf-8-sig") as handle:
+        for line in handle:
+            stripped = line.strip()
+            if stripped.startswith("DATABASE_URL="):
+                return stripped.split("=", 1)[1].strip()
+
+    return None
+
+
 def get_database_url() -> str:
     """Read DATABASE_URL from .env, falling back to POSTGRES_* variables."""
-    database_url = os.getenv("DATABASE_URL")
+    database_url = os.getenv("DATABASE_URL") or _parse_database_url_manual(ENV_PATH)
     if database_url:
         return database_url
 

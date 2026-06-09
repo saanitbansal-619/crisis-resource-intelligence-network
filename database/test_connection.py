@@ -17,7 +17,7 @@ from sqlalchemy import create_engine, text
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 ENV_PATH = PROJECT_ROOT / ".env"
 
-load_dotenv(dotenv_path=ENV_PATH)
+load_dotenv(dotenv_path=ENV_PATH, override=True, encoding="utf-8-sig")
 
 
 def mask_database_url(url: str) -> str:
@@ -35,15 +35,59 @@ def mask_database_url(url: str) -> str:
     return url
 
 
+def mask_env_line(line: str) -> str:
+    """Mask sensitive values in an .env line for debug output."""
+    upper = line.upper()
+    if "PASSWORD" in upper or "APPNAME" in upper:
+        key, _, _ = line.partition("=")
+        return f"{key}=***"
+    return line
+
+
+def print_env_debug() -> None:
+    """Print debug information about the .env file before failing."""
+    print(f"ENV_PATH exists: {ENV_PATH.exists()}")
+    print(f"ENV_PATH: {ENV_PATH}")
+
+    if ENV_PATH.exists():
+        lines = ENV_PATH.read_text(encoding="utf-8-sig").splitlines()
+        non_empty = [line.strip() for line in lines if line.strip()]
+        print("First 5 non-empty .env lines:")
+        for line in non_empty[:5]:
+            print(f"  {mask_env_line(line)}")
+
+    print(f"DATABASE_URL in os.environ after load_dotenv: {'DATABASE_URL' in os.environ}")
+
+
+def parse_database_url_manual(env_path: Path) -> str | None:
+    """Fallback parser for DATABASE_URL when load_dotenv misses it (e.g. BOM)."""
+    if not env_path.exists():
+        return None
+
+    with env_path.open(encoding="utf-8-sig") as handle:
+        for line in handle:
+            stripped = line.strip()
+            if stripped.startswith("DATABASE_URL="):
+                return stripped.split("=", 1)[1].strip()
+
+    return None
+
+
 def main() -> None:
     database_url = os.getenv("DATABASE_URL")
 
     if not database_url:
-        print(
-            "DATABASE_URL not found. Create a .env file in the project root using .env.example."
-        )
-        print(f"Expected .env path: {ENV_PATH}")
-        sys.exit(1)
+        print_env_debug()
+
+        database_url = parse_database_url_manual(ENV_PATH)
+        if database_url:
+            print("Loaded DATABASE_URL using manual fallback parser")
+        else:
+            print(
+                "DATABASE_URL not found. Create a .env file in the project root using .env.example."
+            )
+            print(f"Expected .env path: {ENV_PATH}")
+            sys.exit(1)
 
     print(f"Loaded DATABASE_URL: {mask_database_url(database_url)}")
 
