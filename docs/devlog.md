@@ -52,3 +52,13 @@ Built the first analytics engine for the crisis resource system. The mismatch en
 ## Week 4: FastAPI Backend
 
 Added a FastAPI backend that exposes crisis reports, GDACS alerts, simulated humanitarian resource data, mismatch scores, and summary KPIs from PostgreSQL. This separates the analytics/database layer from future dashboard and AI-reporting layers, making the system easier to test, extend, and deploy.
+
+## Week 5: Streamlit Operations Dashboard
+
+Added a Streamlit dashboard that consumes the FastAPI backend and visualizes crisis resource intelligence metrics. The dashboard includes overview KPIs, critical shortages, surplus resources, resource summaries, and a crisis map. The design uses a serious humanitarian operations style to support professional demos and decision-support workflows.
+
+Polished the dashboard UI with compact header spacing, human-readable table labels, resource-type formatting, tab-level KPI cards, improved chart axis labels, and a focused crisis map view centered on active demo regions.
+
+Redesigned the dashboard with a humanitarian operations visual style for NGO and stakeholder presentation: warm off-white background, white cards, deep humanitarian blue accents, muted severity colors, field-coordination navigation labels, and accessible non-technical language throughout the UI.
+
+Polished the Situation Overview page for stakeholder demos by removing technical backend/API controls from the main UI and adding About, How It Works, Data Sources, pipeline, and priority score explanatory sections.

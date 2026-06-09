@@ -20,3 +20,7 @@ The mismatch engine compares available supply and requested demand by zone/resou
 ## Backend explanation
 
 I used FastAPI to expose the PostgreSQL-backed analytics layer through REST endpoints. This separates data storage and analysis from the user interface, allowing the same backend to support a dashboard, prompt-based AI reports, a natural-language assistant, or external integrations later.
+
+## Dashboard explanation
+
+I built a Streamlit dashboard on top of the FastAPI backend instead of connecting directly to the database. This makes the architecture cleaner because the dashboard consumes the same REST endpoints that a future frontend, AI reporting layer, or external user could consume.

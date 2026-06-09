@@ -40,7 +40,9 @@ GDACS RSS    ───┘                                              │
 
 **Week 3 complete:** Simulated humanitarian coordination data and supply-demand mismatch analytics are in PostgreSQL.
 
-**Week 4 in progress:** FastAPI backend exposes crisis data, resources, mismatches, and summary reports via REST.
+**Week 4 complete:** FastAPI backend exposes crisis data, resources, mismatches, and summary reports via REST.
+
+**Week 5 complete:** Streamlit humanitarian coordination dashboard consumes the FastAPI backend with an NGO-oriented visual style for stakeholder presentation.
 
 ### Working features
 
@@ -56,7 +58,6 @@ GDACS RSS    ───┘                                              │
 
 ### Next steps
 
-- Visualize mismatch results in the Streamlit dashboard
 - Add ML shortage-risk prediction and RAG crisis assistant
 
 ## Data Sources
@@ -169,15 +170,15 @@ SQL query templates for shortages, surpluses, and summaries live in `analytics/q
 
 The FastAPI backend exposes PostgreSQL data and mismatch analytics through REST endpoints. It separates the database/analytics layer from future dashboard and AI features.
 
-Start the API:
+Start the API (port 8001 for dashboard compatibility):
 
 ```bash
-uvicorn backend.main:app --reload
+uvicorn backend.main:app --reload --port 8001
 ```
 
-- Interactive docs: http://127.0.0.1:8000/docs
-- Health check: http://127.0.0.1:8000/health
-- API root: http://127.0.0.1:8000/
+- Interactive docs: http://127.0.0.1:8001/docs
+- Health check: http://127.0.0.1:8001/health
+- API root: http://127.0.0.1:8001/
 
 Endpoint groups:
 
@@ -188,13 +189,25 @@ Endpoint groups:
 | `/mismatches` | Shortage/surplus analytics with filters |
 | `/reports` | KPI overview and resource summaries |
 
-### 5. Start the Streamlit dashboard
+## Week 5: Streamlit Operations Dashboard
 
+The Streamlit dashboard consumes the FastAPI backend and presents crisis resource intelligence in a professional humanitarian operations style. It includes situation overview KPIs, priority needs, available surplus, resource balance, and an operational map.
+
+Run in two terminals:
+
+Terminal 1 — API:
+```bash
+uvicorn backend.main:app --reload --port 8001
+```
+
+Terminal 2 — Dashboard:
 ```bash
 streamlit run dashboard/app.py
 ```
 
-Dashboard opens at http://localhost:8501 by default.
+Dashboard URL: http://localhost:8501
+
+The dashboard connects to the local API at `http://127.0.0.1:8001` internally and uses a humanitarian operations visual style—light background, white cards, muted severity colors, and field-coordination language—for NGO, academic, and non-technical stakeholder presentations. The Situation Overview tab explains data sources, workflow, and how priority scores are calculated.
 
 ## Project Structure
 
