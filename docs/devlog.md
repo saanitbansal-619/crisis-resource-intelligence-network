@@ -48,3 +48,7 @@ Added simulated operational data for humanitarian organizations, crisis zones, r
 ## Week 3: Supply-Demand Mismatch Engine
 
 Built the first analytics engine for the crisis resource system. The mismatch engine aggregates simulated resource inventory and requests by zone and resource type, calculates shortage gaps, shortage ratios, urgency-weighted mismatch scores, and assigns operational status labels such as surplus, stable, severe shortage, and critical shortage. Results are stored in PostgreSQL for downstream API, dashboard, and ML use.
+
+## Week 4: FastAPI Backend
+
+Added a FastAPI backend that exposes crisis reports, GDACS alerts, simulated humanitarian resource data, mismatch scores, and summary KPIs from PostgreSQL. This separates the analytics/database layer from future dashboard and AI-reporting layers, making the system easier to test, extend, and deploy.

@@ -38,7 +38,9 @@ GDACS RSS    ───┘                                              │
 
 **Week 2 complete:** Raw API data is converted into processed CSVs and loaded into a local PostgreSQL database. ReliefWeb and GDACS data are normalized separately, then upserted into `crisis_reports` and `gdacs_alerts` tables.
 
-**Week 3 in progress:** Simulated humanitarian coordination data adds the supply and demand layer for resource mismatch analysis.
+**Week 3 complete:** Simulated humanitarian coordination data and supply-demand mismatch analytics are in PostgreSQL.
+
+**Week 4 in progress:** FastAPI backend exposes crisis data, resources, mismatches, and summary reports via REST.
 
 ### Working features
 
@@ -54,8 +56,8 @@ GDACS RSS    ───┘                                              │
 
 ### Next steps
 
-- Expose database tables through FastAPI endpoints
 - Visualize mismatch results in the Streamlit dashboard
+- Add ML shortage-risk prediction and RAG crisis assistant
 
 ## Data Sources
 
@@ -163,15 +165,28 @@ python -m analytics.mismatch_engine
 
 SQL query templates for shortages, surpluses, and summaries live in `analytics/queries/`.
 
-### 4. Start the FastAPI backend
+## Week 4: FastAPI Backend
+
+The FastAPI backend exposes PostgreSQL data and mismatch analytics through REST endpoints. It separates the database/analytics layer from future dashboard and AI features.
+
+Start the API:
 
 ```bash
 uvicorn backend.main:app --reload
 ```
 
-- API root: http://localhost:8000
-- Interactive docs: http://localhost:8000/docs
-- Health check: http://localhost:8000/health
+- Interactive docs: http://127.0.0.1:8000/docs
+- Health check: http://127.0.0.1:8000/health
+- API root: http://127.0.0.1:8000/
+
+Endpoint groups:
+
+| Prefix | Description |
+|--------|-------------|
+| `/crises` | ReliefWeb reports and GDACS alerts |
+| `/resources` | Zones, organizations, inventory, requests |
+| `/mismatches` | Shortage/surplus analytics with filters |
+| `/reports` | KPI overview and resource summaries |
 
 ### 5. Start the Streamlit dashboard
 

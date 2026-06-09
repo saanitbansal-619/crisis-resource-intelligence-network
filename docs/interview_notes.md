@@ -16,3 +16,7 @@ Real NGO inventory and medical supply data is usually not public for privacy, se
 ## Mismatch engine explanation
 
 The mismatch engine compares available supply and requested demand by zone/resource type. It calculates a shortage gap, shortage ratio, and urgency-weighted mismatch score. This creates an interpretable analytics layer before adding machine learning, which is important because humanitarian coordinators need transparent reasoning, not just black-box predictions.
+
+## Backend explanation
+
+I used FastAPI to expose the PostgreSQL-backed analytics layer through REST endpoints. This separates data storage and analysis from the user interface, allowing the same backend to support a dashboard, prompt-based AI reports, a natural-language assistant, or external integrations later.
