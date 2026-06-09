@@ -75,3 +75,18 @@ CREATE TABLE IF NOT EXISTS resource_requests (
     request_timestamp  TIMESTAMP,
     created_at         TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS mismatch_scores (
+    mismatch_id      TEXT PRIMARY KEY,
+    zone_id          TEXT REFERENCES zones(zone_id),
+    resource_type    TEXT NOT NULL,
+    total_available  INTEGER NOT NULL,
+    total_needed     INTEGER NOT NULL,
+    shortage_gap     INTEGER NOT NULL,
+    shortage_ratio   DOUBLE PRECISION,
+    urgency_level    TEXT,
+    urgency_weight   DOUBLE PRECISION,
+    mismatch_score   DOUBLE PRECISION,
+    status_label     TEXT,
+    calculated_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

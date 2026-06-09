@@ -12,3 +12,7 @@
 ## Why simulated resource data?
 
 Real NGO inventory and medical supply data is usually not public for privacy, security, and operational reasons. I simulated this part of the system to prototype the schema and analytics workflow while using real public data for disaster alerts and humanitarian reports.
+
+## Mismatch engine explanation
+
+The mismatch engine compares available supply and requested demand by zone/resource type. It calculates a shortage gap, shortage ratio, and urgency-weighted mismatch score. This creates an interpretable analytics layer before adding machine learning, which is important because humanitarian coordinators need transparent reasoning, not just black-box predictions.

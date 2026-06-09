@@ -44,3 +44,7 @@ Created a local PostgreSQL database with Docker Compose and added schema/loading
 ## Week 3: Simulated Humanitarian Resource Data
 
 Added simulated operational data for humanitarian organizations, crisis zones, resource inventory, and resource requests. This creates the supply and demand layer of the system, allowing the project to move from crisis monitoring into resource coordination analysis. The data is simulated because real-time NGO inventory data is not publicly available, but the schema is designed to reflect realistic field reporting workflows.
+
+## Week 3: Supply-Demand Mismatch Engine
+
+Built the first analytics engine for the crisis resource system. The mismatch engine aggregates simulated resource inventory and requests by zone and resource type, calculates shortage gaps, shortage ratios, urgency-weighted mismatch scores, and assigns operational status labels such as surplus, stable, severe shortage, and critical shortage. Results are stored in PostgreSQL for downstream API, dashboard, and ML use.

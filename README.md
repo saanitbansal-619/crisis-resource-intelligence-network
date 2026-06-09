@@ -54,8 +54,8 @@ GDACS RSS    ───┘                                              │
 
 ### Next steps
 
-- Implement supply-demand mismatch scoring
 - Expose database tables through FastAPI endpoints
+- Visualize mismatch results in the Streamlit dashboard
 
 ## Data Sources
 
@@ -152,6 +152,16 @@ python -m database.load_resources
 ```
 
 Sample CSVs are saved to `data/sample/` and loaded into PostgreSQL with upsert logic. Some zones are intentionally modeled with shortages; others have surplus inventory.
+
+### Supply-demand mismatch engine
+
+`mismatch_scores` is the first analytics table derived from resource inventory and request data. It compares supply vs. demand by zone and resource type, applies urgency weighting, and assigns status labels (surplus, stable, moderate/severe/critical shortage).
+
+```bash
+python -m analytics.mismatch_engine
+```
+
+SQL query templates for shortages, surpluses, and summaries live in `analytics/queries/`.
 
 ### 4. Start the FastAPI backend
 
