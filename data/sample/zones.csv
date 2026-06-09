@@ -1,0 +1,11 @@
+zone_id,zone_name,country,admin_region,latitude,longitude,population_estimate,crisis_event_id
+ZONE001,Metro Manila Response Zone,Philippines,National Capital Region,14.5995,120.9842,13500000,1544854
+ZONE002,Eastern Mindanao Coastal Corridor,Philippines,Davao Region,7.0731,125.6128,5200000,1544800
+ZONE003,Hatay Province Relief Zone,Türkiye,Hatay,36.4018,36.3498,1680000,1103920
+ZONE004,Gaziantep Support Hub,Türkiye,Gaziantep,37.0662,37.3833,2130000,1103920
+ZONE005,Chad Sahel Transit Zone,Chad,Logone Oriental,8.6733,16.075,780000,
+ZONE006,Kabul Returnee Corridor,Afghanistan,Kabul,34.5553,69.2075,4600000,
+ZONE007,Sarajevo Returnee Support Zone,Bosnia and Herzegovina,Federation of Bosnia and Herzegovina,43.8563,18.4131,275000,
+ZONE008,Cebu Surplus Warehouse Hub,Philippines,Central Visayas,10.3157,123.8854,3200000,
+ZONE009,Ankara Medical Reserve Zone,Türkiye,Ankara,39.9334,32.8597,5800000,
+ZONE010,Surigao Field Response Site,Philippines,Caraga,9.7853,125.495,510000,1544740

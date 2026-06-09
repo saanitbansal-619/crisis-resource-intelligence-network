@@ -1,0 +1,8 @@
+org_id,org_name,org_type,country,contact_email
+ORG001,Médecins Sans Frontières,International NGO,Switzerland,field.ops@msf-sim.example.org
+ORG002,Qatar Charity,Non-governmental Organization,Qatar,relief@qcharity-sim.example.org
+ORG003,UN High Commissioner for Refugees,International Organization,Switzerland,coordination@unhcr-sim.example.org
+ORG004,Philippines Local Relief Coalition,Local NGO,Philippines,dispatch@ph-relief-sim.example.org
+ORG005,Türkiye Disaster Response Network,Government Agency,Türkiye,logistics@tdrn-sim.example.org
+ORG006,World Food Programme Field Unit,UN Agency,Italy,supply@wfp-sim.example.org
+ORG007,Chad Sahel Coordination Desk,Regional NGO,Chad,ops@sahel-desk-sim.example.org

@@ -8,3 +8,7 @@
 - **Problem**: Humanitarian organizations struggle to match resource supply with crisis-driven demand in real time.
 - **Approach**: Ingest public crisis data, normalize it, compute mismatches, and surface actionable intelligence.
 - **Differentiators**: End-to-end pipeline from raw APIs to dashboard, with planned ML and RAG layers.
+
+## Why simulated resource data?
+
+Real NGO inventory and medical supply data is usually not public for privacy, security, and operational reasons. I simulated this part of the system to prototype the schema and analytics workflow while using real public data for disaster alerts and humanitarian reports.

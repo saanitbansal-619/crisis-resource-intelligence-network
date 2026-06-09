@@ -36,7 +36,9 @@ GDACS RSS    ───┘                                              │
 
 **Week 1 setup is complete.** Both external data sources are ingesting successfully in a local-only development environment.
 
-**Week 2 in progress:** Raw API data is converted into processed CSVs and loaded into a local PostgreSQL database. ReliefWeb and GDACS data are normalized separately, then upserted into `crisis_reports` and `gdacs_alerts` tables.
+**Week 2 complete:** Raw API data is converted into processed CSVs and loaded into a local PostgreSQL database. ReliefWeb and GDACS data are normalized separately, then upserted into `crisis_reports` and `gdacs_alerts` tables.
+
+**Week 3 in progress:** Simulated humanitarian coordination data adds the supply and demand layer for resource mismatch analysis.
 
 ### Working features
 
@@ -44,14 +46,14 @@ GDACS RSS    ───┘                                              │
 - GDACS alert ingestion
 - Raw data saving to `data/raw/`
 - ReliefWeb and GDACS cleaning scripts producing processed CSVs in `data/processed/`
-- Local PostgreSQL database via Docker Compose
+- Local PostgreSQL database via Docker Compose (host port 5433)
 - Schema and loader scripts for `crisis_reports` and `gdacs_alerts` tables
+- Simulated organizations, zones, resource inventory, and resource requests
 - Basic pandas inspection of ReliefWeb reports and GDACS alerts
 - Local-only development setup (FastAPI and Streamlit starters included)
 
 ### Next steps
 
-- Build simulated NGO resource inventory
 - Implement supply-demand mismatch scoring
 - Expose database tables through FastAPI endpoints
 
@@ -129,6 +131,28 @@ python -m database.load_reports
 
 Copy `.env.example` to `.env` and set `DATABASE_URL` and `POSTGRES_PORT` to use port **5433** (matching `docker-compose.yml`). Rerunning the loader updates existing rows without creating duplicates.
 
+## Week 3: Simulated Resource Data
+
+Real NGO inventory and medical supply data is not publicly available for privacy, security, and operational reasons. Week 3 adds **simulated** humanitarian coordination data so the project can prototype supply-demand mismatch analysis using realistic schema and workflows.
+
+New tables:
+
+| Table | Description |
+|-------|-------------|
+| `organizations` | NGOs, UN agencies, and government responders |
+| `zones` | Geographic crisis response areas linked to events |
+| `resource_inventory` | Supply available by organization and zone |
+| `resource_requests` | Demand requests by zone and resource type |
+
+Generate and load simulated data:
+
+```bash
+python -m database.generate_sample_resources
+python -m database.load_resources
+```
+
+Sample CSVs are saved to `data/sample/` and loaded into PostgreSQL with upsert logic. Some zones are intentionally modeled with shortages; others have surplus inventory.
+
 ### 4. Start the FastAPI backend
 
 ```bash
@@ -152,7 +176,7 @@ Dashboard opens at http://localhost:8501 by default.
 ```
 CrisisResourceIntel/
 ├── ingestion/       # API fetchers, clean_reliefweb.py, clean_gdacs.py
-├── database/        # Schema, loaders, seed data
+├── database/        # Schema, loaders, sample resource generator
 ├── analytics/       # Mismatch engine and SQL queries
 ├── backend/         # FastAPI application
 ├── dashboard/       # Streamlit UI
