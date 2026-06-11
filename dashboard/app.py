@@ -7,6 +7,10 @@ and supply-demand intelligence for NGO and field coordination workflows.
 Run: streamlit run dashboard/app.py
 """
 
+import html
+from datetime import datetime
+from io import BytesIO
+
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -90,10 +94,15 @@ CHART_PAPER = COLOR_BG
 API_BASE_URL = DEFAULT_API_BASE
 
 
-def format_resource_label(resource_type: str) -> str:
-    if not resource_type or pd.isna(resource_type):
+def format_resource_name(value) -> str:
+    """Return a stakeholder-friendly resource type label."""
+    if not value or pd.isna(value):
         return ""
-    return RESOURCE_LABELS.get(resource_type, str(resource_type).replace("_", " ").title())
+    return RESOURCE_LABELS.get(value, str(value).replace("_", " ").title())
+
+
+def format_resource_label(resource_type: str) -> str:
+    return format_resource_name(resource_type)
 
 
 def format_status_label(status: str) -> str:
@@ -482,6 +491,94 @@ def inject_styles() -> None:
             padding: 0.35rem 0.5rem 0.65rem;
             box-shadow: 0 1px 3px rgba(16, 24, 40, 0.04);
         }}
+        .zone-details-card {{
+            background: {COLOR_CARD};
+            border: 1px solid {COLOR_BORDER};
+            border-radius: 10px;
+            padding: 1.1rem 1.25rem;
+            margin: 1rem 0 0.85rem 0;
+            box-shadow: 0 1px 3px rgba(16, 24, 40, 0.05);
+        }}
+        .zone-details-title {{
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: {COLOR_TEXT};
+            margin-bottom: 0.85rem;
+        }}
+        .zone-details-grid {{
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 0.65rem 1.25rem;
+        }}
+        @media (max-width: 768px) {{
+            .zone-details-grid {{ grid-template-columns: 1fr; }}
+        }}
+        .zone-detail-item {{
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }}
+        .zone-detail-label {{
+            display: block;
+            font-size: 0.78rem;
+            font-weight: 600;
+            color: {COLOR_MUTED};
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            margin-bottom: 0.15rem;
+        }}
+        .zone-detail-value {{
+            color: {COLOR_TEXT};
+            font-weight: 500;
+        }}
+        .zone-brief-card {{
+            background: {COLOR_CARD};
+            border: 1px solid {COLOR_BORDER};
+            border-radius: 10px;
+            padding: 1.2rem 1.3rem;
+            margin: 0.85rem 0 0.65rem 0;
+            box-shadow: 0 1px 3px rgba(16, 24, 40, 0.05);
+        }}
+        .zone-brief-title {{
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: {COLOR_TEXT};
+            margin-bottom: 1rem;
+            padding-bottom: 0.65rem;
+            border-bottom: 1px solid {COLOR_BORDER};
+        }}
+        .zone-brief-section {{
+            margin-bottom: 1.1rem;
+        }}
+        .zone-brief-section-title {{
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: {COLOR_PRIMARY};
+            margin-bottom: 0.45rem;
+        }}
+        .zone-brief-paragraph {{
+            font-size: 0.92rem;
+            color: {COLOR_SECONDARY};
+            line-height: 1.65;
+            margin: 0 0 0.4rem 0;
+        }}
+        .zone-brief-list {{
+            margin: 0.2rem 0 0.35rem 1.15rem;
+            padding: 0;
+            color: {COLOR_SECONDARY};
+            font-size: 0.92rem;
+            line-height: 1.6;
+        }}
+        .zone-brief-list li {{
+            margin-bottom: 0.35rem;
+        }}
+        .zone-brief-transparency {{
+            font-size: 0.86rem;
+            color: {COLOR_MUTED};
+            line-height: 1.55;
+            margin-top: 0.5rem;
+            padding-top: 0.75rem;
+            border-top: 1px solid {COLOR_BORDER};
+        }}
         </style>
         """,
         unsafe_allow_html=True,
@@ -520,6 +617,434 @@ def get_resource_summary(base_url: str) -> list | None:
 
 def get_mismatches(base_url: str, limit: int = 200) -> list | None:
     return fetch_json("/mismatches", base_url, params={"limit": limit})
+
+
+def get_zones(base_url: str) -> list | None:
+    return fetch_json("/resources/zones", base_url)
+
+
+def get_zone_briefing(base_url: str, zone_id: str) -> dict | None:
+    return fetch_json(f"/reports/zone-briefing/{zone_id}", base_url)
+
+
+DATA_TRANSPARENCY_NOTE = (
+    "Public crisis alert and humanitarian report data come from GDACS and ReliefWeb. "
+    "Operational inventory and request data are simulated for prototype purposes because "
+    "real NGO inventory data is generally not public."
+)
+
+RECOMMENDED_ACTIONS = [
+    "Prioritize resources with the highest mismatch scores.",
+    "Coordinate with partner organizations currently holding relevant inventory.",
+    "Review Available Surplus zones for possible redistribution sources.",
+    "Validate transportation access, security, and field capacity before moving supplies.",
+    "Re-run ingestion/loading/mismatch scripts after new crisis or resource updates.",
+]
+
+
+def format_number(value) -> str:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return "—"
+    if isinstance(value, float) and value == int(value):
+        return f"{int(value):,}"
+    if isinstance(value, int):
+        return f"{value:,}"
+    if isinstance(value, float):
+        return f"{value:,.1f}"
+    return str(value)
+
+
+def format_datetime(value) -> str:
+    if not value:
+        return "Not available"
+    return str(value).replace("T", " ").split(".")[0]
+
+
+def build_zone_dropdown_label(zone: dict) -> str:
+    country = zone.get("country") or "Unknown country"
+    return f"{zone.get('zone_id')} — {zone.get('zone_name')}, {country}"
+
+
+def build_zone_operational_brief_sections(briefing: dict) -> list[dict]:
+    """Build structured sections for the Zone Operational Brief."""
+    zone = briefing.get("zone", {})
+    priority_needs = briefing.get("priority_needs", [])
+    inventory = briefing.get("inventory", [])
+    requests = briefing.get("requests", [])
+    alert = briefing.get("related_alert")
+
+    zone_name = zone.get("zone_name", "Unknown Zone")
+    country = zone.get("country") or "—"
+    admin_region = zone.get("admin_region") or "—"
+    population = format_number(zone.get("population_estimate"))
+
+    overview_lines = [
+        f"Zone: {zone_name}",
+        f"Location: {country}, {admin_region}",
+        f"Population estimate: {population}",
+    ]
+
+    if alert:
+        alert_lines = [
+            f"Title: {alert.get('title', '—')}",
+            f"Event type: {alert.get('event_type', '—')}",
+            f"Severity: {alert.get('severity_color', '—')}",
+            f"Published: {format_datetime(alert.get('pub_date_parsed'))}",
+            alert.get("description") or "No description available.",
+            f"Source: {alert.get('link') or 'Not available'}",
+        ]
+    else:
+        alert_lines = ["No directly linked GDACS alert was found for this zone."]
+
+    if priority_needs:
+        needs_lines = []
+        for need in priority_needs:
+            needs_lines.append(
+                f"{format_resource_name(need.get('resource_type'))}: "
+                f"{format_number(need.get('total_available'))} available, "
+                f"{format_number(need.get('total_needed'))} needed, "
+                f"gap {format_number(need.get('shortage_gap'))}, "
+                f"urgency {need.get('urgency_level') or '—'}, "
+                f"priority score {format_number(need.get('mismatch_score'))} "
+                f"({format_status_label(need.get('status_label'))})"
+            )
+    else:
+        needs_lines = ["No critical, severe, or moderate shortages are currently recorded."]
+
+    if inventory:
+        inventory_lines = []
+        for item in inventory:
+            inventory_lines.append(
+                f"{format_resource_name(item.get('resource_type'))}: "
+                f"{format_number(item.get('quantity_available'))} {item.get('unit') or 'units'} "
+                f"({item.get('org_name', 'Unknown partner')}, {item.get('org_type') or 'partner'})"
+            )
+    else:
+        inventory_lines = ["No inventory records are currently available for this zone."]
+
+    if requests:
+        request_lines = []
+        for req in requests:
+            request_lines.append(
+                f"{format_resource_name(req.get('resource_type'))}: "
+                f"{format_number(req.get('quantity_needed'))} needed, "
+                f"urgency {req.get('urgency_level') or '—'}, "
+                f"requested by {req.get('requested_by') or '—'}, "
+                f"timestamp {format_datetime(req.get('request_timestamp'))}"
+            )
+    else:
+        request_lines = ["No resource requests are currently recorded for this zone."]
+
+    if priority_needs:
+        resource_names = ", ".join(
+            format_resource_name(need.get("resource_type")) for need in priority_needs
+        )
+        largest_gap_need = max(priority_needs, key=lambda need: need.get("shortage_gap") or 0)
+        interpretation = (
+            f"This zone shows priority needs across {resource_names}. "
+            f"The largest shortage gap is {format_resource_name(largest_gap_need.get('resource_type'))} "
+            f"with a gap of {format_number(largest_gap_need.get('shortage_gap'))}. "
+            "Response planning should prioritize the highest-score resources first while "
+            "validating partner capacity and field access."
+        )
+    else:
+        interpretation = (
+            "This zone does not currently show critical, severe, or moderate shortages. "
+            "Continue routine monitoring and maintain coordination with partner organizations."
+        )
+
+    return [
+        {"title": "Zone Overview", "lines": overview_lines, "bullets": False},
+        {"title": "Related Disaster Alert", "lines": alert_lines, "bullets": False},
+        {"title": "Priority Needs", "lines": needs_lines, "bullets": True},
+        {"title": "Available Inventory", "lines": inventory_lines, "bullets": True},
+        {"title": "Resource Requests", "lines": request_lines, "bullets": True},
+        {"title": "Operational Interpretation", "lines": [interpretation], "bullets": False},
+        {
+            "title": "Recommended Immediate Actions",
+            "lines": [f"{index}. {action}" for index, action in enumerate(RECOMMENDED_ACTIONS, start=1)],
+            "bullets": False,
+        },
+        {"title": "Data Transparency Note", "lines": [DATA_TRANSPARENCY_NOTE], "bullets": False},
+    ]
+
+
+def generate_zone_operational_brief_text(briefing: dict) -> str:
+    """Return plain-text Zone Operational Brief for copy/export."""
+    zone = briefing.get("zone", {})
+    zone_name = zone.get("zone_name", "Unknown Zone")
+    lines = [f"Zone Operational Brief: {zone_name}", ""]
+    for section in build_zone_operational_brief_sections(briefing):
+        lines.append(section["title"])
+        for item in section["lines"]:
+            prefix = "- " if section["bullets"] else ""
+            lines.append(f"{prefix}{item}")
+        lines.append("")
+    return "\n".join(lines).strip()
+
+
+def generate_situation_report(briefing: dict) -> str:
+    return generate_zone_operational_brief_text(briefing)
+
+
+def generate_priority_needs_brief(briefing: dict) -> str:
+    return generate_zone_operational_brief_text(briefing)
+
+
+def generate_reallocation_recommendation(briefing: dict) -> str:
+    return generate_zone_operational_brief_text(briefing)
+
+
+def generate_disaster_context_summary(briefing: dict) -> str:
+    return generate_zone_operational_brief_text(briefing)
+
+
+def generate_zone_operational_brief_html(briefing: dict) -> str:
+    """Return styled HTML for the in-app Zone Operational Brief preview."""
+    parts = [
+        '<div class="zone-brief-card">',
+        '<div class="zone-brief-title">Zone Operational Brief</div>',
+    ]
+    for section in build_zone_operational_brief_sections(briefing):
+        parts.append('<div class="zone-brief-section">')
+        parts.append(
+            f'<div class="zone-brief-section-title">{html.escape(section["title"])}</div>'
+        )
+        if section["bullets"]:
+            parts.append('<ul class="zone-brief-list">')
+            for line in section["lines"]:
+                parts.append(f"<li>{html.escape(line)}</li>")
+            parts.append("</ul>")
+        else:
+            for line in section["lines"]:
+                css_class = (
+                    "zone-brief-transparency"
+                    if section["title"] == "Data Transparency Note"
+                    else "zone-brief-paragraph"
+                )
+                parts.append(f'<p class="{css_class}">{html.escape(line)}</p>')
+        parts.append("</div>")
+    parts.append("</div>")
+    return "\n".join(parts)
+
+
+def _pdf_escape(text: str) -> str:
+    return (
+        str(text)
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    )
+
+
+def generate_zone_operational_brief_pdf(briefing: dict) -> bytes:
+    """Generate an in-memory PDF for the Zone Operational Brief."""
+    try:
+        from reportlab.lib import colors
+        from reportlab.lib.enums import TA_LEFT
+        from reportlab.lib.pagesizes import letter
+        from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+        from reportlab.lib.units import inch
+        from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
+    except ImportError as exc:
+        raise ImportError(
+            "PDF export requires reportlab. Install it with: pip install reportlab"
+        ) from exc
+
+    zone = briefing.get("zone", {})
+    zone_name = zone.get("zone_name", "Unknown Zone")
+    zone_id = zone.get("zone_id", "zone")
+
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=letter,
+        leftMargin=0.75 * inch,
+        rightMargin=0.75 * inch,
+        topMargin=0.75 * inch,
+        bottomMargin=0.75 * inch,
+    )
+
+    styles = getSampleStyleSheet()
+    header_style = ParagraphStyle(
+        "BriefHeader",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=11,
+        textColor=colors.HexColor("#1F4E79"),
+        spaceAfter=6,
+    )
+    title_style = ParagraphStyle(
+        "BriefTitle",
+        parent=styles["Heading1"],
+        fontName="Helvetica-Bold",
+        fontSize=18,
+        textColor=colors.HexColor("#1F2933"),
+        spaceAfter=8,
+    )
+    meta_style = ParagraphStyle(
+        "BriefMeta",
+        parent=styles["Normal"],
+        fontSize=9,
+        textColor=colors.HexColor("#667085"),
+        spaceAfter=14,
+    )
+    section_style = ParagraphStyle(
+        "BriefSection",
+        parent=styles["Heading2"],
+        fontName="Helvetica-Bold",
+        fontSize=12,
+        textColor=colors.HexColor("#1F4E79"),
+        spaceBefore=10,
+        spaceAfter=6,
+    )
+    body_style = ParagraphStyle(
+        "BriefBody",
+        parent=styles["Normal"],
+        fontSize=10,
+        leading=14,
+        textColor=colors.HexColor("#334155"),
+        alignment=TA_LEFT,
+        spaceAfter=4,
+    )
+    note_style = ParagraphStyle(
+        "BriefNote",
+        parent=body_style,
+        fontSize=9,
+        textColor=colors.HexColor("#667085"),
+        spaceBefore=8,
+    )
+
+    story = [
+        Paragraph(_pdf_escape("Crisis Resource Intelligence Network"), header_style),
+        Paragraph(_pdf_escape("Zone Operational Brief"), title_style),
+        Paragraph(
+            _pdf_escape(
+                f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')} | Zone: {zone_name} ({zone_id})"
+            ),
+            meta_style,
+        ),
+    ]
+
+    for section in build_zone_operational_brief_sections(briefing):
+        story.append(Paragraph(_pdf_escape(section["title"]), section_style))
+        prefix = "• " if section["bullets"] else ""
+        style = note_style if section["title"] == "Data Transparency Note" else body_style
+        for line in section["lines"]:
+            story.append(Paragraph(_pdf_escape(f"{prefix}{line}"), style))
+        story.append(Spacer(1, 0.08 * inch))
+
+    doc.build(story)
+    return buffer.getvalue()
+
+
+def try_generate_zone_operational_brief_pdf(briefing: dict) -> tuple[bytes | None, str | None]:
+    """Return PDF bytes, or (None, error_message) if generation is unavailable."""
+    try:
+        return generate_zone_operational_brief_pdf(briefing), None
+    except ImportError as exc:
+        return None, str(exc)
+    except Exception as exc:
+        return None, f"PDF generation failed: {exc}"
+
+
+def _init_map_briefing_state() -> None:
+    """Initialize session state for map-based zone briefings."""
+    if "selected_zone_id" not in st.session_state:
+        st.session_state["selected_zone_id"] = None
+    if "selected_zone_briefing" not in st.session_state:
+        st.session_state["selected_zone_briefing"] = None
+    if "show_zone_brief" not in st.session_state:
+        st.session_state["show_zone_brief"] = False
+    if "show_copy_brief" not in st.session_state:
+        st.session_state["show_copy_brief"] = False
+
+
+def _load_zone_briefing(base_url: str, zone_id: str) -> dict | None:
+    """Fetch briefing and reset brief/copy visibility when the zone changes."""
+    if zone_id != st.session_state.get("selected_zone_id"):
+        st.session_state["selected_zone_id"] = zone_id
+        st.session_state["show_zone_brief"] = False
+        st.session_state["show_copy_brief"] = False
+        st.session_state["selected_zone_briefing"] = get_zone_briefing(base_url, zone_id)
+    elif st.session_state.get("selected_zone_briefing") is None:
+        st.session_state["selected_zone_briefing"] = get_zone_briefing(base_url, zone_id)
+    return st.session_state.get("selected_zone_briefing")
+
+
+def render_selected_zone_panel(briefing: dict) -> None:
+    """Render the Selected Zone summary card."""
+    zone = briefing.get("zone", {})
+    metrics = briefing.get("summary_metrics", {})
+    alert = briefing.get("related_alert")
+    alert_title = alert.get("title") if alert else "No linked alert"
+    country = zone.get("country") or "—"
+    region = zone.get("admin_region") or "—"
+
+    detail_items = [
+        ("Zone Name", zone.get("zone_name") or "—"),
+        ("Country / Region", f"{country} / {region}"),
+        ("Population Estimate", format_number(zone.get("population_estimate"))),
+        ("Highest Priority Score", format_number(metrics.get("highest_mismatch_score"))),
+        ("Largest Shortage Gap", format_number(metrics.get("largest_shortage_gap"))),
+        ("Most Urgent Level", metrics.get("most_urgent_level") or "—"),
+        ("Related Alert", alert_title),
+    ]
+
+    items_html = "".join(
+        f'<div class="zone-detail-item">'
+        f'<span class="zone-detail-label">{html.escape(label)}</span>'
+        f'<span class="zone-detail-value">{html.escape(str(value))}</span>'
+        f"</div>"
+        for label, value in detail_items
+    )
+
+    st.markdown(
+        f"""
+        <div class="zone-details-card">
+            <div class="zone-details-title">Selected Zone</div>
+            <div class="zone-details-grid">{items_html}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_zone_operational_brief_preview(briefing: dict) -> None:
+    """Render the formatted Zone Operational Brief preview card."""
+    st.markdown(generate_zone_operational_brief_html(briefing), unsafe_allow_html=True)
+
+
+def render_zone_briefing_actions(briefing: dict, zone_id: str) -> None:
+    """Render action buttons for viewing, exporting, or copying the zone brief."""
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        if st.button("View Operational Brief", key="view_zone_brief_btn", use_container_width=True):
+            st.session_state["show_zone_brief"] = True
+
+    pdf_bytes = None
+    pdf_error = None
+    with col2:
+        pdf_bytes, pdf_error = try_generate_zone_operational_brief_pdf(briefing)
+        if pdf_bytes is not None:
+            st.download_button(
+                label="Download PDF",
+                data=pdf_bytes,
+                file_name=f"zone_operational_brief_{zone_id}.pdf",
+                mime="application/pdf",
+                key=f"map_brief_pdf_{zone_id}",
+                use_container_width=True,
+            )
+        else:
+            st.button("Download PDF", disabled=True, use_container_width=True, key="pdf_disabled_btn")
+
+    with col3:
+        if st.button("Copy Brief", key="copy_zone_brief_btn", use_container_width=True):
+            st.session_state["show_copy_brief"] = True
+
+    if pdf_error:
+        st.warning(pdf_error)
 
 
 def render_metric_card(label: str, value, accent: str = "neutral") -> None:
@@ -748,8 +1273,8 @@ def build_operational_map_figure(df: pd.DataFrame) -> go.Figure:
                     sizemin=4,
                     line=dict(width=0.6, color="#FFFFFF"),
                 ),
-                customdata=subset["hover_text"],
-                hovertemplate="%{customdata}<extra></extra>",
+                customdata=subset[["zone_id", "hover_text"]].values,
+                hovertemplate="%{customdata[1]}<extra></extra>",
                 showlegend=False,
             )
         )
@@ -991,13 +1516,42 @@ def render_summary_tab(base_url: str) -> None:
     render_content_card_end()
 
 
+def _zone_id_from_map_selection(selection) -> str | None:
+    """Extract zone_id from a Plotly point selection when available."""
+    if not selection:
+        return None
+    points = getattr(getattr(selection, "selection", None), "points", None)
+    if not points:
+        return None
+    customdata = points[0].get("customdata")
+    if not customdata:
+        return None
+    if isinstance(customdata, (list, tuple)) and customdata:
+        return str(customdata[0])
+    return None
+
+
 def render_map_tab(base_url: str) -> None:
     st.markdown('<div class="section-header">Operational Map</div>', unsafe_allow_html=True)
     st.markdown(
-        '<div class="ops-note">Zones are plotted by resource mismatch status. '
-        "Marker size reflects priority score.</div>",
+        '<div class="ops-note">Marker size reflects priority score. '
+        "Select a zone to review briefing options.</div>",
         unsafe_allow_html=True,
     )
+
+    _init_map_briefing_state()
+
+    zones = get_zones(base_url)
+    if zones is None:
+        show_backend_warning()
+        return
+    if not zones:
+        st.info("No zones are available for map briefing.")
+        return
+
+    zone_labels = [build_zone_dropdown_label(zone) for zone in zones]
+    zone_lookup = {build_zone_dropdown_label(zone): zone["zone_id"] for zone in zones}
+    zone_id_to_label = {zone["zone_id"]: build_zone_dropdown_label(zone) for zone in zones}
 
     data = get_mismatches(base_url)
     if data is None:
@@ -1030,7 +1584,61 @@ def render_map_tab(base_url: str) -> None:
 
     present_statuses = set(df["display_status"].dropna().unique())
     render_map_legend(present_statuses)
-    st.plotly_chart(build_operational_map_figure(df), use_container_width=True)
+
+    map_figure = build_operational_map_figure(df)
+    map_event = st.plotly_chart(
+        map_figure,
+        use_container_width=True,
+        key="operational_map_chart",
+        on_select="rerun",
+        selection_mode="points",
+    )
+
+    clicked_zone_id = _zone_id_from_map_selection(map_event)
+    if clicked_zone_id and clicked_zone_id in zone_id_to_label:
+        _load_zone_briefing(base_url, clicked_zone_id)
+
+    current_zone_id = st.session_state.get("selected_zone_id")
+    selector_index = (
+        zone_labels.index(zone_id_to_label[current_zone_id])
+        if current_zone_id in zone_id_to_label
+        else None
+    )
+
+    selected_label = st.selectbox(
+        "Select a zone to view briefing options",
+        zone_labels,
+        index=selector_index,
+        placeholder="Choose a zone...",
+        key="map_zone_selector",
+    )
+
+    if selected_label:
+        selected_zone_id = zone_lookup[selected_label]
+        briefing = _load_zone_briefing(base_url, selected_zone_id)
+    else:
+        briefing = None
+
+    if briefing is None:
+        if selected_label:
+            show_backend_warning()
+        return
+
+    render_selected_zone_panel(briefing)
+    render_zone_briefing_actions(briefing, st.session_state["selected_zone_id"])
+
+    if st.session_state.get("show_zone_brief"):
+        render_zone_operational_brief_preview(briefing)
+
+    if st.session_state.get("show_copy_brief"):
+        with st.expander("Copy-ready briefing text", expanded=True):
+            st.text_area(
+                "Copy-ready briefing text",
+                value=generate_zone_operational_brief_text(briefing),
+                height=280,
+                label_visibility="collapsed",
+                key=f"map_brief_copy_{st.session_state['selected_zone_id']}",
+            )
 
 
 def main() -> None:

@@ -62,3 +62,23 @@ Polished the dashboard UI with compact header spacing, human-readable table labe
 Redesigned the dashboard with a humanitarian operations visual style for NGO and stakeholder presentation: warm off-white background, white cards, deep humanitarian blue accents, muted severity colors, field-coordination navigation labels, and accessible non-technical language throughout the UI.
 
 Polished the Situation Overview page for stakeholder demos by removing technical backend/API controls from the main UI and adding About, How It Works, Data Sources, pipeline, and priority score explanatory sections.
+
+## Week 6: Zone Briefing Endpoint
+
+Added a zone briefing endpoint that consolidates zone metadata, priority needs, surplus resources, inventory, requests, and related disaster alerts into one structured response. This endpoint prepares the system for prompt-based AI situation reports and operational recommendations.
+
+## Week 6: Template-Based AI Reports
+
+Added a dashboard report generator that creates structured operational briefings from the zone briefing endpoint. Reports are currently template-based and deterministic, using PostgreSQL-backed shortage, inventory, request, and disaster alert data. This prepares the system for a future RAG/LLM layer while keeping outputs grounded and explainable.
+
+## Week 6: Operational Briefing Workflow
+
+Moved the report generator into the Priority Needs workflow as an embedded Operational Briefing section. Briefings are generated from the zone briefing endpoint and remain template-based for now, preparing the system for a future RAG layer without introducing ungrounded AI output.
+
+## Week 6: Map-Based Zone Operational Briefs
+
+Moved the briefing workflow into the Operational Map. Users can select a crisis zone, review zone-level details, view a formatted Zone Operational Brief in the dashboard, and optionally export the brief as a PDF. The briefing is template-based and grounded in the zone briefing endpoint, preparing the system for a future RAG-enhanced reporting layer.
+
+## Week 6: In-App Zone Brief Preview and PDF Export
+
+Improved the Operational Map briefing workflow so selecting a zone shows a compact action panel. Users can view a formatted Zone Operational Brief directly in the dashboard, optionally download it as a PDF, or open copy-ready text. PDF export uses ReportLab and the dashboard handles missing dependencies gracefully.

@@ -44,6 +44,8 @@ GDACS RSS    ───┘                                              │
 
 **Week 5 complete:** Streamlit humanitarian coordination dashboard consumes the FastAPI backend with an NGO-oriented visual style for stakeholder presentation.
 
+**Week 6 Part 1 complete:** Zone briefing endpoint and map-based Zone Operational Briefs on the Operational Map page generate template-based coordination briefs from PostgreSQL-backed data. No external LLM is required yet.
+
 ### Working features
 
 - ReliefWeb API ingestion with approved appname support (loaded from `.env`)
@@ -189,6 +191,14 @@ Endpoint groups:
 | `/mismatches` | Shortage/surplus analytics with filters |
 | `/reports` | KPI overview and resource summaries |
 
+Zone briefing (consolidated data for one zone):
+
+```
+GET /reports/zone-briefing/{zone_id}
+```
+
+Example: http://127.0.0.1:8001/reports/zone-briefing/ZONE001
+
 ## Week 5: Streamlit Operations Dashboard
 
 The Streamlit dashboard consumes the FastAPI backend and presents crisis resource intelligence in a professional humanitarian operations style. It includes situation overview KPIs, priority needs, available surplus, resource balance, and an operational map.
@@ -208,6 +218,20 @@ streamlit run dashboard/app.py
 Dashboard URL: http://localhost:8501
 
 The dashboard connects to the local API at `http://127.0.0.1:8001` internally and uses a humanitarian operations visual style—light background, white cards, muted severity colors, and field-coordination language—for NGO, academic, and non-technical stakeholder presentations. The Situation Overview tab explains data sources, workflow, and how priority scores are calculated.
+
+## Week 6 Part 1: Map-Based Zone Operational Briefs
+
+The **Operational Map** supports selected-zone briefing preview. Users select a zone via map marker click or the zone selector, review a compact **Selected Zone** panel, then choose to view the formatted **Zone Operational Brief** in-app, download a PDF, or open copy-ready text. The full brief is not shown until the user clicks **View Operational Brief**.
+
+Briefings are template-based and grounded in PostgreSQL data—no external LLM, RAG, or vector database is required yet. PDF export is optional and uses ReportLab (`pip install reportlab`). If ReportLab is not installed, the dashboard shows a clear warning instead of crashing.
+
+**Backend endpoint:**
+
+```
+GET /reports/zone-briefing/{zone_id}
+```
+
+Example: http://127.0.0.1:8001/reports/zone-briefing/ZONE001
 
 ## Project Structure
 
