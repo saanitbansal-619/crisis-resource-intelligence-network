@@ -8,6 +8,7 @@ Run: streamlit run dashboard/app.py
 """
 
 import html
+import json
 from datetime import datetime
 from io import BytesIO
 
@@ -434,16 +435,113 @@ def inject_styles() -> None:
 
         .stButton > button {{
             background-color: {COLOR_PRIMARY};
-            color: white;
+            color: #FFFFFF !important;
             border: none;
             border-radius: 8px;
             font-weight: 600;
             padding: 0.45rem 1rem;
         }}
-        .stButton > button:hover {{
+        .stButton > button:hover,
+        .stButton > button:focus,
+        .stButton > button:active {{
             background-color: #163d5e;
-            color: white;
+            color: #FFFFFF !important;
             border: none;
+        }}
+        .stButton > button * {{
+            color: #FFFFFF !important;
+        }}
+        .stDownloadButton {{
+            margin: 0 !important;
+            padding: 0 !important;
+        }}
+        .stDownloadButton > button {{
+            width: 100% !important;
+            height: 44px !important;
+            min-height: 44px !important;
+            padding: 0 1rem !important;
+            margin: 0 !important;
+            background-color: #1F4E79 !important;
+            color: #FFFFFF !important;
+            border: none !important;
+            border-radius: 8px !important;
+            font-size: 0.95rem !important;
+            font-weight: 500 !important;
+            font-family: inherit !important;
+            line-height: 1 !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            box-sizing: border-box !important;
+        }}
+        .stDownloadButton > button * {{
+            color: #FFFFFF !important;
+            font-size: 0.95rem !important;
+            font-weight: 500 !important;
+            font-family: inherit !important;
+            line-height: 1 !important;
+        }}
+        .stDownloadButton > button:hover,
+        .stDownloadButton > button:focus,
+        .stDownloadButton > button:active {{
+            background-color: #17436B !important;
+            color: #FFFFFF !important;
+        }}
+        [data-testid="stHtml"] {{
+            margin: 0 !important;
+            padding: 0 !important;
+            height: 46px !important;
+            min-height: 46px !important;
+        }}
+        [data-testid="stHtml"] iframe {{
+            height: 46px !important;
+            min-height: 46px !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            border: none !important;
+            display: block !important;
+        }}
+        .brief-action-status {{
+            text-align: center;
+            color: #027A48;
+            font-size: 0.9rem;
+            font-weight: 600;
+            margin-top: 8px;
+            min-height: 1.1rem;
+        }}
+        div[data-testid="column"]:has(.zone-brief-actions-primary) button,
+        div[data-testid="column"]:has(.zone-brief-actions-secondary) button,
+        div[data-testid="column"]:has(.zone-brief-actions-secondary) a {{
+            background-color: {COLOR_PRIMARY} !important;
+            color: #FFFFFF !important;
+            border: none !important;
+            border-radius: 8px !important;
+            font-weight: 600 !important;
+            font-size: 0.95rem !important;
+            padding: 0.6rem 1.25rem !important;
+            box-shadow: 0 1px 2px rgba(16, 24, 40, 0.08);
+            text-decoration: none !important;
+        }}
+        div[data-testid="column"]:has(.zone-brief-actions-primary) button:hover,
+        div[data-testid="column"]:has(.zone-brief-actions-primary) button:focus,
+        div[data-testid="column"]:has(.zone-brief-actions-primary) button:active,
+        div[data-testid="column"]:has(.zone-brief-actions-secondary) button:hover,
+        div[data-testid="column"]:has(.zone-brief-actions-secondary) button:focus,
+        div[data-testid="column"]:has(.zone-brief-actions-secondary) button:active,
+        div[data-testid="column"]:has(.zone-brief-actions-secondary) a:hover,
+        div[data-testid="column"]:has(.zone-brief-actions-secondary) a:focus,
+        div[data-testid="column"]:has(.zone-brief-actions-secondary) a:active {{
+            background-color: #163d5e !important;
+            color: #FFFFFF !important;
+            border: none !important;
+        }}
+        div[data-testid="column"]:has(.zone-brief-actions-primary) button *,
+        div[data-testid="column"]:has(.zone-brief-actions-secondary) button *,
+        div[data-testid="column"]:has(.zone-brief-actions-secondary) a * {{
+            color: #FFFFFF !important;
+        }}
+        .zone-brief-action-spacer {{
+            margin-top: 0.35rem;
         }}
 
         .stTextInput input {{
@@ -956,8 +1054,6 @@ def _init_map_briefing_state() -> None:
         st.session_state["selected_zone_briefing"] = None
     if "show_zone_brief" not in st.session_state:
         st.session_state["show_zone_brief"] = False
-    if "show_copy_brief" not in st.session_state:
-        st.session_state["show_copy_brief"] = False
 
 
 def _load_zone_briefing(base_url: str, zone_id: str) -> dict | None:
@@ -965,7 +1061,9 @@ def _load_zone_briefing(base_url: str, zone_id: str) -> dict | None:
     if zone_id != st.session_state.get("selected_zone_id"):
         st.session_state["selected_zone_id"] = zone_id
         st.session_state["show_zone_brief"] = False
-        st.session_state["show_copy_brief"] = False
+        for key in list(st.session_state.keys()):
+            if str(key).startswith("brief_action_status_"):
+                del st.session_state[key]
         st.session_state["selected_zone_briefing"] = get_zone_briefing(base_url, zone_id)
     elif st.session_state.get("selected_zone_briefing") is None:
         st.session_state["selected_zone_briefing"] = get_zone_briefing(base_url, zone_id)
@@ -1015,17 +1113,104 @@ def render_zone_operational_brief_preview(briefing: dict) -> None:
     st.markdown(generate_zone_operational_brief_html(briefing), unsafe_allow_html=True)
 
 
-def render_zone_briefing_actions(briefing: dict, zone_id: str) -> None:
-    """Render action buttons for viewing, exporting, or copying the zone brief."""
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
+def render_view_brief_button() -> None:
+    """Render the primary View Operational Brief action below the Selected Zone card."""
+    st.markdown('<div class="zone-brief-action-spacer"></div>', unsafe_allow_html=True)
+    _, btn_col, _ = st.columns([1, 2, 1])
+    with btn_col:
+        st.markdown('<span class="zone-brief-actions-primary"></span>', unsafe_allow_html=True)
         if st.button("View Operational Brief", key="view_zone_brief_btn", use_container_width=True):
             st.session_state["show_zone_brief"] = True
 
-    pdf_bytes = None
-    pdf_error = None
-    with col2:
+
+def render_copy_button(text: str, label: str = "Copy Brief", zone_id: str = "") -> None:
+    """Render a clipboard copy button inside a Streamlit HTML component."""
+    from streamlit.components.v1 import html as embed_html
+
+    safe_text = json.dumps(text)
+    status_id = f"brief-action-status-{zone_id}"
+
+    embed_html(
+        f"""
+        <style>
+            html, body {{
+                margin: 0;
+                padding: 0;
+                height: 44px;
+                overflow: hidden;
+                font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            }}
+        </style>
+        <button
+            type="button"
+            onclick='
+                (function() {{
+                    var statusId = {json.dumps(status_id)};
+                    function findStatusEl() {{
+                        var docs = [document];
+                        try {{ docs.push(window.parent.document); }} catch (e) {{}}
+                        try {{
+                            if (window.parent.parent) {{
+                                docs.push(window.parent.parent.document);
+                            }}
+                        }} catch (e) {{}}
+                        for (var i = 0; i < docs.length; i++) {{
+                            try {{
+                                var el = docs[i].getElementById(statusId);
+                                if (el) return el;
+                            }} catch (e) {{}}
+                        }}
+                        return null;
+                    }}
+                    navigator.clipboard.writeText({safe_text}).then(function() {{
+                        var el = findStatusEl();
+                        if (el) el.innerText = "Brief copied to clipboard.";
+                    }}).catch(function() {{
+                        var el = findStatusEl();
+                        if (el) el.innerText = "Copy failed. Please try again.";
+                    }});
+                }})();
+            '
+            style="
+                width: 100%;
+                height: 44px;
+                min-height: 44px;
+                padding: 0 1rem;
+                margin: 0;
+                background-color: #1F4E79;
+                color: #FFFFFF;
+                border: none;
+                border-radius: 8px;
+                font-size: 0.95rem;
+                font-weight: 500;
+                font-family: inherit;
+                line-height: 1;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                box-sizing: border-box;
+                cursor: pointer;
+            "
+        >
+            {html.escape(label)}
+        </button>
+        """,
+        height=46,
+    )
+
+
+def _mark_pdf_download_started(zone_id: str) -> None:
+    st.session_state[f"brief_action_status_{zone_id}"] = "PDF downloaded."
+
+
+def render_brief_secondary_actions(briefing: dict, zone_id: str) -> None:
+    """Render PDF and copy actions after the brief preview is opened."""
+    brief_text = generate_zone_operational_brief_text(briefing)
+    status_key = f"brief_action_status_{zone_id}"
+    status_id = f"brief-action-status-{zone_id}"
+    col1, col2 = st.columns(2, gap="large")
+
+    with col1:
         pdf_bytes, pdf_error = try_generate_zone_operational_brief_pdf(briefing)
         if pdf_bytes is not None:
             st.download_button(
@@ -1035,16 +1220,20 @@ def render_zone_briefing_actions(briefing: dict, zone_id: str) -> None:
                 mime="application/pdf",
                 key=f"map_brief_pdf_{zone_id}",
                 use_container_width=True,
+                on_click=_mark_pdf_download_started,
+                args=(zone_id,),
             )
-        else:
-            st.button("Download PDF", disabled=True, use_container_width=True, key="pdf_disabled_btn")
+        elif pdf_error:
+            st.warning(pdf_error)
 
-    with col3:
-        if st.button("Copy Brief", key="copy_zone_brief_btn", use_container_width=True):
-            st.session_state["show_copy_brief"] = True
+    with col2:
+        render_copy_button(brief_text, "Copy Brief", zone_id=zone_id)
 
-    if pdf_error:
-        st.warning(pdf_error)
+    status_message = st.session_state.get(status_key, "")
+    st.markdown(
+        f'<div id="{status_id}" class="brief-action-status">{html.escape(status_message)}</div>',
+        unsafe_allow_html=True,
+    )
 
 
 def render_metric_card(label: str, value, accent: str = "neutral") -> None:
@@ -1625,20 +1814,12 @@ def render_map_tab(base_url: str) -> None:
         return
 
     render_selected_zone_panel(briefing)
-    render_zone_briefing_actions(briefing, st.session_state["selected_zone_id"])
 
-    if st.session_state.get("show_zone_brief"):
+    if not st.session_state.get("show_zone_brief"):
+        render_view_brief_button()
+    else:
         render_zone_operational_brief_preview(briefing)
-
-    if st.session_state.get("show_copy_brief"):
-        with st.expander("Copy-ready briefing text", expanded=True):
-            st.text_area(
-                "Copy-ready briefing text",
-                value=generate_zone_operational_brief_text(briefing),
-                height=280,
-                label_visibility="collapsed",
-                key=f"map_brief_copy_{st.session_state['selected_zone_id']}",
-            )
+        render_brief_secondary_actions(briefing, st.session_state["selected_zone_id"])
 
 
 def main() -> None:
