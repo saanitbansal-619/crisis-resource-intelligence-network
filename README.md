@@ -233,6 +233,15 @@ GET /reports/zone-briefing/{zone_id}
 
 Example: http://127.0.0.1:8001/reports/zone-briefing/ZONE001
 
+## Dashboard Screenshots
+
+![Situation Overview](docs/screenshots/situation_overview.png)
+![Priority Needs](docs/screenshots/priority_needs.png)
+![Available Surplus](docs/screenshots/available_surplus.png)
+![Resource Balance](docs/screenshots/resource_balance.png)
+![Operational Map](docs/screenshots/operational_map.png)
+![Zone Operational Brief](docs/screenshots/zone_operational_brief.png)
+
 ## Project Structure
 
 ```
