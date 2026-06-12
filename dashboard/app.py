@@ -18,6 +18,13 @@ import plotly.graph_objects as go
 import requests
 import streamlit as st
 
+st.set_page_config(
+    page_title="Crisis Resource Intelligence Network",
+    page_icon="🌍",
+    layout="wide",
+    initial_sidebar_state="collapsed",
+)
+
 DEFAULT_API_BASE = "http://127.0.0.1:8001"
 
 # Humanitarian operations color palette
@@ -166,9 +173,18 @@ def inject_styles() -> None:
         }}
 
         .block-container {{
-            padding-top: 1rem;
-            padding-bottom: 2.5rem;
-            max-width: 1140px;
+            max-width: 1500px !important;
+            padding-left: 2rem !important;
+            padding-right: 2rem !important;
+            padding-top: 1.5rem !important;
+            padding-bottom: 2.5rem !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+        }}
+        section[data-testid="stMain"] > div {{
+            max-width: 1500px !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
         }}
 
         /* Typography & contrast */
@@ -294,6 +310,8 @@ def inject_styles() -> None:
 
         /* Hero header */
         .hero-card {{
+            width: 100%;
+            box-sizing: border-box;
             background: {COLOR_CARD};
             border: 1px solid {COLOR_BORDER};
             border-radius: 12px;
@@ -326,6 +344,8 @@ def inject_styles() -> None:
 
         /* Website-style tab navigation */
         div[data-testid="stTabs"] {{
+            width: 100%;
+            box-sizing: border-box;
             margin-top: 0.25rem;
         }}
         div[data-testid="stTabs"] [data-baseweb="tab-list"] {{
@@ -1823,12 +1843,6 @@ def render_map_tab(base_url: str) -> None:
 
 
 def main() -> None:
-    st.set_page_config(
-        page_title="Humanitarian Resource Coordination Dashboard",
-        layout="wide",
-        initial_sidebar_state="collapsed",
-    )
-
     inject_styles()
     api_base = get_api_base()
     render_hero_header()
