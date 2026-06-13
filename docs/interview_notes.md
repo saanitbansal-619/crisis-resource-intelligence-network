@@ -208,12 +208,17 @@ The RAG layer now exposes a FastAPI endpoint for zone-specific retrieved crisis 
 
 The next RAG phase adds pgvector-enabled PostgreSQL so the system can store embeddings for ReliefWeb/GDACS chunks and support semantic search alongside keyword/metadata retrieval.
 
+The project now includes a pgvector-backed semantic retrieval phase. ReliefWeb/GDACS chunks can be embedded locally using Ollama `nomic-embed-text` and stored in PostgreSQL with `vector(768)`. This enables semantic search over crisis context while keeping the earlier TF-IDF retriever as a baseline/fallback.
+
 **Offline commands:**
 
 ```bash
 python -m rag.build_corpus
 python -m rag.chunk_documents
 python -m rag.simple_retriever "Philippines earthquake water food medical needs"
+python -m database.create_rag_tables
+python -m rag.embed_chunks
+python -m rag.semantic_retriever "Philippines earthquake water food medical needs"
 ```
 
 ---
