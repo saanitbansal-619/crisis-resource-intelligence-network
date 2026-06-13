@@ -206,6 +206,8 @@ The RAG layer now exposes a FastAPI endpoint for zone-specific retrieved crisis 
 
 **API endpoint:** `GET /reports/rag-zone-context/{zone_id}`
 
+The next RAG phase adds pgvector-enabled PostgreSQL so the system can store embeddings for ReliefWeb/GDACS chunks and support semantic search alongside keyword/metadata retrieval.
+
 **Offline commands:**
 
 ```bash

@@ -4,7 +4,7 @@
 
 services:
   postgres:
-    image: postgres:15
+    image: pgvector/pgvector:0.8.1-pg15
     container_name: crisis_resource_postgres
     restart: unless-stopped
     ports:
