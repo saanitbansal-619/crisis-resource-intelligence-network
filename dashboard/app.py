@@ -697,6 +697,152 @@ def inject_styles() -> None:
             padding-top: 0.75rem;
             border-top: 1px solid {COLOR_BORDER};
         }}
+        .rag-context-card {{
+            margin-top: 0.75rem;
+        }}
+        .rag-context-heading-row {{
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.75rem;
+            margin-bottom: 0.85rem;
+            padding-bottom: 0.65rem;
+            border-bottom: 1px solid {COLOR_BORDER};
+        }}
+        .rag-context-title {{
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: {COLOR_TEXT};
+        }}
+        .rag-context-badge {{
+            display: inline-block;
+            font-size: 0.72rem;
+            font-weight: 600;
+            letter-spacing: 0.03em;
+            text-transform: uppercase;
+            color: {COLOR_PRIMARY};
+            background: #E8F1FA;
+            border: 1px solid #C7DDF2;
+            border-radius: 999px;
+            padding: 0.2rem 0.55rem;
+            white-space: nowrap;
+        }}
+        .rag-summary-card {{
+            background: #F8FAFC;
+            border: 1px solid {COLOR_BORDER};
+            border-radius: 8px;
+            padding: 0.9rem 1rem;
+            margin-bottom: 0.9rem;
+        }}
+        .rag-summary-text {{
+            font-size: 0.92rem;
+            color: {COLOR_SECONDARY};
+            line-height: 1.65;
+            margin: 0;
+        }}
+        .rag-source-card {{
+            border: 1px solid {COLOR_BORDER};
+            border-radius: 8px;
+            padding: 0.85rem 0.95rem;
+            margin-bottom: 0.75rem;
+            background: {COLOR_CARD};
+        }}
+        .rag-source-header {{
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+            margin-bottom: 0.45rem;
+        }}
+        .rag-label {{
+            display: inline-block;
+            font-size: 0.72rem;
+            font-weight: 600;
+            border-radius: 999px;
+            padding: 0.18rem 0.5rem;
+        }}
+        .rag-label-country {{
+            color: #027A48;
+            background: #ECFDF3;
+            border: 1px solid #ABEFC6;
+        }}
+        .rag-label-fallback {{
+            color: #B54708;
+            background: #FFF6ED;
+            border: 1px solid #F9DBAF;
+        }}
+        .rag-fallback-note {{
+            font-size: 0.8rem;
+            color: {COLOR_MUTED};
+            line-height: 1.45;
+            margin: 0.35rem 0 0.45rem 0;
+            font-style: italic;
+        }}
+        .rag-summary-card .rag-context-badge {{
+            margin-bottom: 0.55rem;
+        }}
+        .rag-summary-card .rag-context-transparency {{
+            margin-top: 0.75rem;
+            padding-top: 0.65rem;
+            border-top: 1px solid {COLOR_BORDER};
+        }}
+        .rag-expander-wrap {{
+            margin-top: -0.35rem;
+            margin-bottom: 0.75rem;
+        }}
+        .rag-score {{
+            font-size: 0.78rem;
+            color: {COLOR_MUTED};
+            font-weight: 500;
+        }}
+        .rag-source-title {{
+            font-size: 0.94rem;
+            font-weight: 600;
+            color: {COLOR_TEXT};
+            line-height: 1.45;
+            margin-bottom: 0.35rem;
+        }}
+        .rag-source-meta {{
+            font-size: 0.82rem;
+            color: {COLOR_MUTED};
+            margin-bottom: 0.45rem;
+        }}
+        .rag-source-preview {{
+            font-size: 0.9rem;
+            color: {COLOR_SECONDARY};
+            line-height: 1.6;
+            margin: 0 0 0.5rem 0;
+        }}
+        .rag-source-link {{
+            font-size: 0.84rem;
+            font-weight: 600;
+            color: {COLOR_PRIMARY};
+            text-decoration: none;
+        }}
+        .rag-source-link:hover {{
+            text-decoration: underline;
+        }}
+        .rag-context-warning {{
+            font-size: 0.9rem;
+            color: #B54708;
+            line-height: 1.55;
+            margin: 0;
+        }}
+        .rag-context-empty {{
+            font-size: 0.92rem;
+            color: {COLOR_SECONDARY};
+            line-height: 1.55;
+            margin: 0;
+        }}
+        .rag-context-transparency {{
+            font-size: 0.86rem;
+            color: {COLOR_MUTED};
+            line-height: 1.55;
+            margin-top: 0.75rem;
+            padding-top: 0.75rem;
+            border-top: 1px solid {COLOR_BORDER};
+        }}
         </style>
         """,
         unsafe_allow_html=True,
@@ -743,6 +889,21 @@ def get_zones(base_url: str) -> list | None:
 
 def get_zone_briefing(base_url: str, zone_id: str) -> dict | None:
     return fetch_json(f"/reports/zone-briefing/{zone_id}", base_url)
+
+
+def get_rag_zone_context(base_url: str, zone_id: str) -> dict | None:
+    return fetch_json(f"/reports/rag-zone-context/{zone_id}", base_url)
+
+
+RAG_UNAVAILABLE_MESSAGE = (
+    "Retrieved crisis context is currently unavailable. "
+    "Run the RAG corpus/chunk scripts and restart the API."
+)
+RAG_EMPTY_MESSAGE = "No retrieved crisis context available for this zone."
+RAG_TRANSPARENCY_NOTE = (
+    "This is retrieval-based context from ReliefWeb/GDACS records. "
+    "It is not an LLM-generated analysis."
+)
 
 
 DATA_TRANSPARENCY_NOTE = (
@@ -887,7 +1048,10 @@ def build_zone_operational_brief_sections(briefing: dict) -> list[dict]:
     ]
 
 
-def generate_zone_operational_brief_text(briefing: dict) -> str:
+def generate_zone_operational_brief_text(
+    briefing: dict,
+    rag_context: dict | None = None,
+) -> str:
     """Return plain-text Zone Operational Brief for copy/export."""
     zone = briefing.get("zone", {})
     zone_name = zone.get("zone_name", "Unknown Zone")
@@ -898,6 +1062,7 @@ def generate_zone_operational_brief_text(briefing: dict) -> str:
             prefix = "- " if section["bullets"] else ""
             lines.append(f"{prefix}{item}")
         lines.append("")
+    lines.extend(build_retrieved_crisis_context_text(rag_context))
     return "\n".join(lines).strip()
 
 
@@ -946,6 +1111,168 @@ def generate_zone_operational_brief_html(briefing: dict) -> str:
     return "\n".join(parts)
 
 
+def _format_relevance_score(score) -> str:
+    if score is None:
+        return "—"
+    try:
+        return f"{float(score):.3f}"
+    except (TypeError, ValueError):
+        return "—"
+
+
+def _truncate_text(text: str, limit: int) -> str:
+    cleaned = " ".join((text or "").split())
+    if len(cleaned) <= limit:
+        return cleaned
+    return cleaned[: limit - 3] + "..."
+
+
+def build_compact_rag_summary(rag_context: dict) -> str:
+    """Return a short stakeholder-friendly RAG summary for the dashboard card."""
+    country = (rag_context.get("country") or "this zone").strip()
+    items = rag_context.get("retrieved_context") or []
+    country_specific = [item for item in items if not item.get("is_fallback")]
+    fallback = [item for item in items if item.get("is_fallback")]
+
+    if not items:
+        return ""
+
+    parts: list[str] = []
+    if country_specific:
+        count = len(country_specific)
+        source_label = "source" if count == 1 else "sources"
+        parts.append(f"Country-specific context found for {country} ({count} {source_label}).")
+    else:
+        parts.append(f"No country-specific context found for {country}.")
+
+    if fallback:
+        fallback_count = len(fallback)
+        fallback_label = "source" if fallback_count == 1 else "sources"
+        parts.append(
+            f"{fallback_count} fallback {fallback_label} included as general humanitarian context only."
+        )
+
+    return " ".join(parts)
+
+
+def build_retrieved_crisis_context_text(rag_context: dict | None) -> list[str]:
+    """Return plain-text lines for copy/PDF export."""
+    lines = ["Retrieved Crisis Context", ""]
+
+    if rag_context is None:
+        lines.append(RAG_UNAVAILABLE_MESSAGE)
+        return lines
+
+    compact_summary = build_compact_rag_summary(rag_context)
+    if compact_summary:
+        lines.append(compact_summary)
+    elif not (rag_context.get("retrieved_context") or []):
+        lines.append(RAG_EMPTY_MESSAGE)
+
+    transparency = (rag_context.get("transparency_note") or RAG_TRANSPARENCY_NOTE).strip()
+    lines.append(transparency)
+    lines.append("")
+
+    items = (rag_context.get("retrieved_context") or [])[:3]
+    if items:
+        lines.append("Sources:")
+        for item in items:
+            title = _truncate_text(item.get("title") or "Untitled source", 160)
+            lines.append(f"- {title}")
+            url = (item.get("url") or "").strip()
+            if url:
+                lines.append(f"  {url}")
+
+    return lines
+
+
+def _safe_markdown_text(text: str) -> str:
+    """Escape characters that would break simple Streamlit markdown."""
+    return text.replace("\\", "\\\\").replace("*", "\\*").replace("_", "\\_").replace("`", "\\`")
+
+
+def _render_rag_source_card(item: dict, add_divider: bool = True) -> None:
+    """Render one retrieved source inside the expander using clean Streamlit markdown."""
+    is_fallback = bool(item.get("is_fallback"))
+    label = "Fallback / General Context" if is_fallback else "Country-Specific Context"
+
+    meta_parts = [
+        item.get("source_type") or "—",
+        item.get("country") or "—",
+    ]
+    if item.get("event_type"):
+        meta_parts.append(item.get("event_type"))
+
+    title = _truncate_text(item.get("title") or "Untitled source", 140)
+    preview = _truncate_text(item.get("preview") or "", 140)
+
+    st.markdown(f"**{label}**")
+    st.markdown(f"Relevance: {_format_relevance_score(item.get('relevance_score'))}")
+    st.markdown(f"**{_safe_markdown_text(title)}**")
+    st.caption(" · ".join(meta_parts))
+
+    if is_fallback:
+        st.caption("General context only; not direct evidence about this zone.")
+
+    if preview:
+        st.markdown(_safe_markdown_text(preview))
+
+    url = (item.get("url") or "").strip()
+    if url:
+        st.markdown(f"[View source]({url})")
+
+    if add_divider:
+        st.divider()
+
+
+def render_retrieved_crisis_context(rag_context: dict | None, zone_id: str = "") -> None:
+    """Render the compact Retrieved Crisis Context section with a source expander."""
+    st.markdown(
+        """
+        <div class="zone-brief-card rag-context-card">
+            <div class="rag-context-title">Retrieved Crisis Context</div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if rag_context is None:
+        st.markdown(
+            f'<p class="rag-context-warning">{html.escape(RAG_UNAVAILABLE_MESSAGE)}</p></div>',
+            unsafe_allow_html=True,
+        )
+        return
+
+    transparency = (rag_context.get("transparency_note") or RAG_TRANSPARENCY_NOTE).strip()
+    items = rag_context.get("retrieved_context") or []
+    compact_summary = build_compact_rag_summary(rag_context)
+
+    summary_body = compact_summary
+    if not summary_body and not items:
+        summary_body = RAG_EMPTY_MESSAGE
+
+    st.markdown(
+        f"""
+        <div class="rag-summary-card">
+            <span class="rag-context-badge">Retrieval-Based Context</span>
+            <p class="rag-summary-text">{html.escape(summary_body)}</p>
+            <p class="rag-context-transparency">{html.escape(transparency)}</p>
+        </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if items:
+        visible_items = items[:3]
+        with st.expander("View retrieved sources", expanded=False):
+            for index, item in enumerate(visible_items):
+                _render_rag_source_card(
+                    item,
+                    add_divider=index < len(visible_items) - 1,
+                )
+        st.markdown('<div class="rag-expander-wrap"></div>', unsafe_allow_html=True)
+
+
 def _pdf_escape(text: str) -> str:
     return (
         str(text)
@@ -955,7 +1282,10 @@ def _pdf_escape(text: str) -> str:
     )
 
 
-def generate_zone_operational_brief_pdf(briefing: dict) -> bytes:
+def generate_zone_operational_brief_pdf(
+    briefing: dict,
+    rag_context: dict | None = None,
+) -> bytes:
     """Generate an in-memory PDF for the Zone Operational Brief."""
     try:
         from reportlab.lib import colors
@@ -1052,14 +1382,32 @@ def generate_zone_operational_brief_pdf(briefing: dict) -> bytes:
             story.append(Paragraph(_pdf_escape(f"{prefix}{line}"), style))
         story.append(Spacer(1, 0.08 * inch))
 
+    for line in build_retrieved_crisis_context_text(rag_context):
+        if line == "Retrieved Crisis Context":
+            story.append(Paragraph(_pdf_escape(line), section_style))
+            continue
+        if not line.strip():
+            story.append(Spacer(1, 0.05 * inch))
+            continue
+        if line in {RAG_UNAVAILABLE_MESSAGE, RAG_EMPTY_MESSAGE}:
+            style = note_style
+        elif "retrieval-based context" in line.lower():
+            style = note_style
+        else:
+            style = body_style
+        story.append(Paragraph(_pdf_escape(line), style))
+
     doc.build(story)
     return buffer.getvalue()
 
 
-def try_generate_zone_operational_brief_pdf(briefing: dict) -> tuple[bytes | None, str | None]:
+def try_generate_zone_operational_brief_pdf(
+    briefing: dict,
+    rag_context: dict | None = None,
+) -> tuple[bytes | None, str | None]:
     """Return PDF bytes, or (None, error_message) if generation is unavailable."""
     try:
-        return generate_zone_operational_brief_pdf(briefing), None
+        return generate_zone_operational_brief_pdf(briefing, rag_context), None
     except ImportError as exc:
         return None, str(exc)
     except Exception as exc:
@@ -1074,6 +1422,10 @@ def _init_map_briefing_state() -> None:
         st.session_state["selected_zone_briefing"] = None
     if "show_zone_brief" not in st.session_state:
         st.session_state["show_zone_brief"] = False
+    if "rag_context_zone_id" not in st.session_state:
+        st.session_state["rag_context_zone_id"] = None
+    if "rag_zone_context" not in st.session_state:
+        st.session_state["rag_zone_context"] = None
 
 
 def _load_zone_briefing(base_url: str, zone_id: str) -> dict | None:
@@ -1081,6 +1433,8 @@ def _load_zone_briefing(base_url: str, zone_id: str) -> dict | None:
     if zone_id != st.session_state.get("selected_zone_id"):
         st.session_state["selected_zone_id"] = zone_id
         st.session_state["show_zone_brief"] = False
+        st.session_state["rag_context_zone_id"] = None
+        st.session_state["rag_zone_context"] = None
         for key in list(st.session_state.keys()):
             if str(key).startswith("brief_action_status_"):
                 del st.session_state[key]
@@ -1088,6 +1442,18 @@ def _load_zone_briefing(base_url: str, zone_id: str) -> dict | None:
     elif st.session_state.get("selected_zone_briefing") is None:
         st.session_state["selected_zone_briefing"] = get_zone_briefing(base_url, zone_id)
     return st.session_state.get("selected_zone_briefing")
+
+
+def _load_rag_zone_context(base_url: str, zone_id: str) -> dict | None:
+    """Fetch RAG context for the open brief, caching per selected zone."""
+    cached_zone = st.session_state.get("rag_context_zone_id")
+    if cached_zone == zone_id and "rag_zone_context" in st.session_state:
+        return st.session_state["rag_zone_context"]
+
+    rag_context = get_rag_zone_context(base_url, zone_id)
+    st.session_state["rag_context_zone_id"] = zone_id
+    st.session_state["rag_zone_context"] = rag_context
+    return rag_context
 
 
 def render_selected_zone_panel(briefing: dict) -> None:
@@ -1128,9 +1494,14 @@ def render_selected_zone_panel(briefing: dict) -> None:
     )
 
 
-def render_zone_operational_brief_preview(briefing: dict) -> None:
+def render_zone_operational_brief_preview(
+    briefing: dict,
+    rag_context: dict | None = None,
+    zone_id: str = "",
+) -> None:
     """Render the formatted Zone Operational Brief preview card."""
     st.markdown(generate_zone_operational_brief_html(briefing), unsafe_allow_html=True)
+    render_retrieved_crisis_context(rag_context, zone_id=zone_id)
 
 
 def render_view_brief_button() -> None:
@@ -1223,15 +1594,19 @@ def _mark_pdf_download_started(zone_id: str) -> None:
     st.session_state[f"brief_action_status_{zone_id}"] = "PDF downloaded."
 
 
-def render_brief_secondary_actions(briefing: dict, zone_id: str) -> None:
+def render_brief_secondary_actions(
+    briefing: dict,
+    zone_id: str,
+    rag_context: dict | None = None,
+) -> None:
     """Render PDF and copy actions after the brief preview is opened."""
-    brief_text = generate_zone_operational_brief_text(briefing)
+    brief_text = generate_zone_operational_brief_text(briefing, rag_context)
     status_key = f"brief_action_status_{zone_id}"
     status_id = f"brief-action-status-{zone_id}"
     col1, col2 = st.columns(2, gap="large")
 
     with col1:
-        pdf_bytes, pdf_error = try_generate_zone_operational_brief_pdf(briefing)
+        pdf_bytes, pdf_error = try_generate_zone_operational_brief_pdf(briefing, rag_context)
         if pdf_bytes is not None:
             st.download_button(
                 label="Download PDF",
@@ -1838,8 +2213,10 @@ def render_map_tab(base_url: str) -> None:
     if not st.session_state.get("show_zone_brief"):
         render_view_brief_button()
     else:
-        render_zone_operational_brief_preview(briefing)
-        render_brief_secondary_actions(briefing, st.session_state["selected_zone_id"])
+        zone_id = st.session_state["selected_zone_id"]
+        rag_context = _load_rag_zone_context(base_url, zone_id)
+        render_zone_operational_brief_preview(briefing, rag_context, zone_id=zone_id)
+        render_brief_secondary_actions(briefing, zone_id, rag_context)
 
 
 def main() -> None:
