@@ -4,6 +4,11 @@ Prepare retrieval-based RAG context for a zone briefing (no LLM yet).
 
 from rag.simple_retriever import retrieve_context
 
+TRANSPARENCY_NOTE = (
+    "This is retrieval-based context from ReliefWeb/GDACS records. "
+    "It is not an LLM-generated analysis."
+)
+
 
 def _clean(value) -> str:
     if value is None:
@@ -56,32 +61,68 @@ def build_zone_rag_query(
     return " ".join(part for part in parts if part)
 
 
-def _build_rag_summary(query: str, retrieved_context: list[dict]) -> str:
+def _format_source_titles(items: list[dict], limit: int) -> str:
+    titles: list[str] = []
+    seen: set[str] = set()
+
+    for item in items:
+        if len(titles) >= limit:
+            break
+
+        title = _clean(item.get("title")) or _clean(item.get("source_type")) or "Untitled source"
+        source_type = _clean(item.get("source_type")) or "unknown"
+        label = f"{title} ({source_type})"
+
+        if label in seen:
+            continue
+        seen.add(label)
+        titles.append(label)
+
+    return "; ".join(titles)
+
+
+def _build_rag_summary(zone: dict, retrieved_context: list[dict]) -> str:
+    country = _clean(zone.get("country")) or "the selected zone"
+
     if not retrieved_context:
         return (
             "No retrieved context was found from ReliefWeb/GDACS documents for this zone query. "
-            "This is retrieval-based context only and not an LLM-generated analysis."
+            f"{TRANSPARENCY_NOTE}"
         )
 
-    country_hint = next((item.get("country") for item in retrieved_context if item.get("country")), "")
-    event_hint = next((item.get("event_type") for item in retrieved_context if item.get("event_type")), "")
+    country_specific_context = [
+        item for item in retrieved_context if not item.get("is_fallback")
+    ]
+    fallback_context = [item for item in retrieved_context if item.get("is_fallback")]
 
-    location_parts = [part for part in [country_hint, event_hint] if part]
-    location_text = " / ".join(location_parts) if location_parts else "the selected crisis context"
+    parts: list[str] = []
 
-    top_sources = []
-    for item in retrieved_context[:3]:
-        title = _clean(item.get("title")) or _clean(item.get("source_type")) or "Untitled source"
-        source_type = _clean(item.get("source_type")) or "unknown"
-        top_sources.append(f"{title} ({source_type})")
+    if country_specific_context:
+        parts.append(f"Retrieved country-specific context was found for {country}.")
+        country_titles = _format_source_titles(country_specific_context, 3)
+        if country_titles:
+            parts.append(f"Country-specific sources include: {country_titles}.")
+    else:
+        parts.append(
+            f"No country-specific context was found for {country}. "
+            "Fallback results are general humanitarian context and should not be treated as "
+            "direct evidence about the selected zone."
+        )
 
-    sources_text = "; ".join(top_sources)
+    if fallback_context:
+        if country_specific_context:
+            parts.append(
+                "Additional fallback context was included because fewer than the requested number "
+                "of country-specific chunks were available. Fallback sources should be treated as "
+                f"general humanitarian context, not direct evidence about {country}."
+            )
 
-    return (
-        f"Retrieved context was found from ReliefWeb/GDACS documents related to {location_text}. "
-        f"The top sources include: {sources_text}. "
-        "This is retrieval-based context only and not an LLM-generated analysis."
-    )
+        fallback_titles = _format_source_titles(fallback_context, 2)
+        if fallback_titles:
+            parts.append(f"Fallback sources include: {fallback_titles}.")
+
+    parts.append(TRANSPARENCY_NOTE)
+    return " ".join(parts)
 
 
 def generate_rag_context_for_zone(
@@ -93,7 +134,7 @@ def generate_rag_context_for_zone(
     """Build a zone query, retrieve relevant chunks, and return structured RAG context."""
     query = build_zone_rag_query(zone, priority_needs=priority_needs, related_alert=related_alert)
     retrieved_context = retrieve_context(query, top_k=top_k)
-    rag_summary = _build_rag_summary(query, retrieved_context)
+    rag_summary = _build_rag_summary(zone, retrieved_context)
 
     return {
         "query": query,

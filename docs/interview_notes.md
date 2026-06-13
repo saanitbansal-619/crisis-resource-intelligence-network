@@ -202,6 +202,10 @@ The zone briefing endpoint and mismatch scores are designed to keep future AI ou
 
 The first RAG layer builds a local searchable corpus from ReliefWeb and GDACS records stored in PostgreSQL. It chunks report/alert text and uses TF-IDF retrieval to find relevant crisis context for a selected zone. This is a lightweight retrieval baseline before adding pgvector semantic search, hybrid retrieval, or local LLM-generated briefings.
 
+The RAG layer now exposes a FastAPI endpoint for zone-specific retrieved crisis context, allowing the dashboard to later display retrieved ReliefWeb/GDACS context alongside structured shortage metrics.
+
+**API endpoint:** `GET /reports/rag-zone-context/{zone_id}`
+
 **Offline commands:**
 
 ```bash

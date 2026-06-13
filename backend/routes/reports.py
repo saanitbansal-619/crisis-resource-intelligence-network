@@ -2,11 +2,15 @@
 Summary report endpoints for KPIs and resource analytics.
 """
 
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from backend.database import get_db, row_to_dict, rows_to_dicts
+from rag.rag_briefing import generate_rag_context_for_zone
+from rag.simple_retriever import CHUNKS_PATH
 
 URGENCY_RANK = {"low": 1, "medium": 2, "high": 3, "critical": 4}
 
@@ -31,6 +35,84 @@ def _most_urgent_level(needs: list[dict]) -> str | None:
             best_rank = URGENCY_RANK[level]
             best_level = level
     return best_level
+
+
+def _get_zone_by_id(db: Session, zone_id: str) -> dict | None:
+    return row_to_dict(
+        db.execute(
+            text(
+                """
+                SELECT
+                    zone_id,
+                    zone_name,
+                    country,
+                    admin_region,
+                    latitude,
+                    longitude,
+                    population_estimate,
+                    crisis_event_id
+                FROM zones
+                WHERE zone_id = :zone_id
+                """
+            ),
+            {"zone_id": zone_id},
+        )
+    )
+
+
+def _get_related_alert(db: Session, zone: dict) -> dict | None:
+    normalized_event_id = _normalize_crisis_event_id(zone.get("crisis_event_id"))
+    if not normalized_event_id:
+        return None
+
+    return row_to_dict(
+        db.execute(
+            text(
+                """
+                SELECT
+                    alert_id,
+                    title,
+                    event_type,
+                    severity_color,
+                    country,
+                    pub_date_parsed,
+                    description,
+                    link
+                FROM gdacs_alerts
+                WHERE alert_id = :alert_id
+                """
+            ),
+            {"alert_id": normalized_event_id},
+        )
+    )
+
+
+def _preview_chunk_text(text_value: str, limit: int = 220) -> str:
+    cleaned = " ".join((text_value or "").split())
+    if len(cleaned) <= limit:
+        return cleaned
+    return cleaned[: limit - 3] + "..."
+
+
+def _format_retrieved_context(retrieved_context: list[dict]) -> list[dict]:
+    formatted: list[dict] = []
+    for rank, item in enumerate(retrieved_context, start=1):
+        formatted.append(
+            {
+                "rank": rank,
+                "title": item.get("title"),
+                "source_type": item.get("source_type"),
+                "country": item.get("country"),
+                "event_type": item.get("event_type"),
+                "url": item.get("url"),
+                "relevance_score": item.get("relevance_score"),
+                "tfidf_score": item.get("tfidf_score"),
+                "metadata_boost": item.get("metadata_boost"),
+                "is_fallback": bool(item.get("is_fallback", False)),
+                "preview": _preview_chunk_text(item.get("chunk_text", "")),
+            }
+        )
+    return formatted
 
 
 router = APIRouter(prefix="/reports", tags=["reports"])
@@ -92,26 +174,7 @@ def get_resource_summary(db: Session = Depends(get_db)) -> list[dict]:
 @router.get("/zone-briefing/{zone_id}")
 def get_zone_briefing(zone_id: str, db: Session = Depends(get_db)) -> dict:
     """Return a consolidated briefing for one crisis zone."""
-    zone = row_to_dict(
-        db.execute(
-            text(
-                """
-                SELECT
-                    zone_id,
-                    zone_name,
-                    country,
-                    admin_region,
-                    latitude,
-                    longitude,
-                    population_estimate,
-                    crisis_event_id
-                FROM zones
-                WHERE zone_id = :zone_id
-                """
-            ),
-            {"zone_id": zone_id},
-        )
-    )
+    zone = _get_zone_by_id(db, zone_id)
     if zone is None:
         raise HTTPException(status_code=404, detail=f"Zone '{zone_id}' not found")
 
@@ -202,29 +265,7 @@ def get_zone_briefing(zone_id: str, db: Session = Depends(get_db)) -> dict:
         )
     )
 
-    related_alert = None
-    normalized_event_id = _normalize_crisis_event_id(zone.get("crisis_event_id"))
-    if normalized_event_id:
-        related_alert = row_to_dict(
-            db.execute(
-                text(
-                    """
-                    SELECT
-                        alert_id,
-                        title,
-                        event_type,
-                        severity_color,
-                        country,
-                        pub_date_parsed,
-                        description,
-                        link
-                    FROM gdacs_alerts
-                    WHERE alert_id = :alert_id
-                    """
-                ),
-                {"alert_id": normalized_event_id},
-            )
-        )
+    related_alert = _get_related_alert(db, zone)
 
     mismatch_scores = [row.get("mismatch_score") for row in priority_needs]
     shortage_gaps = [row.get("shortage_gap") for row in priority_needs]
@@ -243,4 +284,72 @@ def get_zone_briefing(zone_id: str, db: Session = Depends(get_db)) -> dict:
             "largest_shortage_gap": max(shortage_gaps) if shortage_gaps else None,
             "most_urgent_level": _most_urgent_level(priority_needs),
         },
+    }
+
+
+@router.get("/rag-zone-context/{zone_id}")
+def get_rag_zone_context(zone_id: str, db: Session = Depends(get_db)) -> dict:
+    """Return retrieval-based ReliefWeb/GDACS context for one crisis zone."""
+    if not Path(CHUNKS_PATH).exists():
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "RAG chunks not found. Run python -m rag.build_corpus and "
+                "python -m rag.chunk_documents first."
+            ),
+        )
+
+    zone = _get_zone_by_id(db, zone_id)
+    if zone is None:
+        raise HTTPException(status_code=404, detail=f"Zone '{zone_id}' not found")
+
+    priority_needs = rows_to_dicts(
+        db.execute(
+            text(
+                """
+                SELECT
+                    resource_type,
+                    total_available,
+                    total_needed,
+                    shortage_gap,
+                    shortage_ratio,
+                    urgency_level,
+                    mismatch_score,
+                    status_label
+                FROM mismatch_scores
+                WHERE zone_id = :zone_id
+                ORDER BY mismatch_score DESC
+                LIMIT 5
+                """
+            ),
+            {"zone_id": zone_id},
+        )
+    )
+
+    related_alert = _get_related_alert(db, zone)
+
+    try:
+        rag_result = generate_rag_context_for_zone(
+            zone=zone,
+            priority_needs=priority_needs,
+            related_alert=related_alert,
+            top_k=5,
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"RAG retrieval failed for zone '{zone_id}': {exc}",
+        ) from exc
+
+    return {
+        "zone_id": zone.get("zone_id"),
+        "zone_name": zone.get("zone_name"),
+        "country": zone.get("country"),
+        "query": rag_result.get("query", ""),
+        "retrieved_context": _format_retrieved_context(rag_result.get("retrieved_context", [])),
+        "rag_summary": rag_result.get("rag_summary", ""),
+        "transparency_note": (
+            "This is retrieval-based context from ReliefWeb/GDACS records. "
+            "It is not an LLM-generated analysis."
+        ),
     }
