@@ -9,6 +9,11 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from backend.database import get_db, row_to_dict, rows_to_dicts
+from rag.llm_briefing import (
+    OllamaModelNotFoundError,
+    OllamaUnavailableError,
+    generate_ai_operational_brief,
+)
 from rag.rag_briefing import generate_rag_context_for_zone
 from rag.simple_retriever import CHUNKS_PATH
 
@@ -355,4 +360,94 @@ def get_rag_zone_context(zone_id: str, db: Session = Depends(get_db)) -> dict:
             "This is retrieval-based context from ReliefWeb/GDACS records. "
             "It is not an LLM-generated analysis."
         ),
+    }
+
+
+@router.get("/ai-zone-briefing/{zone_id}")
+def get_ai_zone_briefing(zone_id: str, db: Session = Depends(get_db)) -> dict:
+    """Return an AI-assisted operational briefing for one crisis zone."""
+    zone = _get_zone_by_id(db, zone_id)
+    if zone is None:
+        raise HTTPException(status_code=404, detail=f"Zone '{zone_id}' not found")
+
+    briefing_data = get_zone_briefing(zone_id, db)
+    priority_needs = briefing_data.get("priority_needs", [])
+    inventory = briefing_data.get("inventory", [])
+    requests = briefing_data.get("requests", [])
+    related_alert = briefing_data.get("related_alert")
+
+    rag_priority_needs = rows_to_dicts(
+        db.execute(
+            text(
+                """
+                SELECT
+                    resource_type,
+                    total_available,
+                    total_needed,
+                    shortage_gap,
+                    shortage_ratio,
+                    urgency_level,
+                    mismatch_score,
+                    status_label
+                FROM mismatch_scores
+                WHERE zone_id = :zone_id
+                ORDER BY mismatch_score DESC
+                LIMIT 5
+                """
+            ),
+            {"zone_id": zone_id},
+        )
+    )
+
+    retrieved_context: list[dict] = []
+    rag_unavailable = False
+
+    if not Path(CHUNKS_PATH).exists():
+        rag_unavailable = True
+    else:
+        try:
+            rag_result = generate_rag_context_for_zone(
+                zone=zone,
+                priority_needs=rag_priority_needs,
+                related_alert=related_alert,
+                top_k=5,
+            )
+            retrieved_context = rag_result.get("retrieved_context", [])
+        except Exception:
+            rag_unavailable = True
+            retrieved_context = []
+
+    try:
+        ai_result = generate_ai_operational_brief(
+            zone=zone,
+            priority_needs=priority_needs,
+            inventory=inventory,
+            requests_list=requests,
+            related_alert=related_alert,
+            retrieved_context=retrieved_context,
+            rag_unavailable=rag_unavailable,
+        )
+    except OllamaUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except OllamaModelNotFoundError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"AI briefing generation failed for zone '{zone_id}': {exc}",
+        ) from exc
+
+    context_used = _format_retrieved_context(retrieved_context[:3])
+
+    return {
+        "zone_id": zone.get("zone_id"),
+        "zone_name": zone.get("zone_name"),
+        "country": zone.get("country"),
+        "model": ai_result.get("model"),
+        "generation_type": ai_result.get("generation_type"),
+        "briefing_text": ai_result.get("briefing_text"),
+        "grounding_note": ai_result.get("grounding_note"),
+        "transparency_note": ai_result.get("transparency_note"),
+        "retrieved_context_used": context_used,
+        "rag_context_unavailable": rag_unavailable,
     }
