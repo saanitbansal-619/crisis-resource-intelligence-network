@@ -2,7 +2,7 @@
 Prepare retrieval-based RAG context for a zone briefing (no LLM yet).
 """
 
-from rag.simple_retriever import retrieve_context
+from rag.hybrid_retriever import hybrid_retrieve_context
 
 TRANSPARENCY_NOTE = (
     "This is retrieval-based context from ReliefWeb/GDACS records. "
@@ -61,27 +61,25 @@ def build_zone_rag_query(
     return " ".join(part for part in parts if part)
 
 
-def _format_source_titles(items: list[dict], limit: int) -> str:
-    titles: list[str] = []
-    seen: set[str] = set()
+def _normalize_retrieved_context(retrieved_context: list[dict]) -> list[dict]:
+    """Normalize hybrid retrieval fields for API and dashboard consumers."""
+    normalized: list[dict] = []
+    for item in retrieved_context:
+        result = dict(item)
+        final_score = result.get("final_score")
+        relevance_score = result.get("relevance_score")
 
-    for item in items:
-        if len(titles) >= limit:
-            break
+        if final_score is not None:
+            result["relevance_score"] = final_score
+        elif relevance_score is not None:
+            result["final_score"] = relevance_score
 
-        title = _clean(item.get("title")) or _clean(item.get("source_type")) or "Untitled source"
-        source_type = _clean(item.get("source_type")) or "unknown"
-        label = f"{title} ({source_type})"
-
-        if label in seen:
-            continue
-        seen.add(label)
-        titles.append(label)
-
-    return "; ".join(titles)
+        result.pop("tfidf_score", None)
+        normalized.append(result)
+    return normalized
 
 
-def _build_rag_summary(zone: dict, retrieved_context: list[dict]) -> str:
+def _build_rag_summary(zone: dict, retrieved_context: list[dict], top_k: int = 5) -> str:
     country = _clean(zone.get("country")) or "the selected zone"
 
     if not retrieved_context:
@@ -98,10 +96,12 @@ def _build_rag_summary(zone: dict, retrieved_context: list[dict]) -> str:
     parts: list[str] = []
 
     if country_specific_context:
-        parts.append(f"Retrieved country-specific context was found for {country}.")
-        country_titles = _format_source_titles(country_specific_context, 3)
-        if country_titles:
-            parts.append(f"Country-specific sources include: {country_titles}.")
+        count = len(country_specific_context)
+        source_label = "source" if count == 1 else "sources"
+        parts.append(f"Country-specific context found for {country} ({count} {source_label}).")
+        parts.append(
+            "Context was retrieved using hybrid semantic and keyword search over ReliefWeb/GDACS records."
+        )
     else:
         parts.append(
             f"No country-specific context was found for {country}. "
@@ -109,17 +109,12 @@ def _build_rag_summary(zone: dict, retrieved_context: list[dict]) -> str:
             "direct evidence about the selected zone."
         )
 
-    if fallback_context:
-        if country_specific_context:
-            parts.append(
-                "Additional fallback context was included because fewer than the requested number "
-                "of country-specific chunks were available. Fallback sources should be treated as "
-                f"general humanitarian context, not direct evidence about {country}."
-            )
-
-        fallback_titles = _format_source_titles(fallback_context, 2)
-        if fallback_titles:
-            parts.append(f"Fallback sources include: {fallback_titles}.")
+    if fallback_context and country_specific_context:
+        parts.append(
+            f"Additional fallback context is included because fewer than {top_k} "
+            f"country-specific chunks were available. Fallback sources should be treated as "
+            f"general humanitarian context, not direct evidence about {country}."
+        )
 
     parts.append(TRANSPARENCY_NOTE)
     return " ".join(parts)
@@ -133,8 +128,8 @@ def generate_rag_context_for_zone(
 ) -> dict:
     """Build a zone query, retrieve relevant chunks, and return structured RAG context."""
     query = build_zone_rag_query(zone, priority_needs=priority_needs, related_alert=related_alert)
-    retrieved_context = retrieve_context(query, top_k=top_k)
-    rag_summary = _build_rag_summary(zone, retrieved_context)
+    retrieved_context = _normalize_retrieved_context(hybrid_retrieve_context(query, top_k=top_k))
+    rag_summary = _build_rag_summary(zone, retrieved_context, top_k=top_k)
 
     return {
         "query": query,

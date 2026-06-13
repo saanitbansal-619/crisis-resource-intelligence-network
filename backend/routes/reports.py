@@ -97,6 +97,7 @@ def _preview_chunk_text(text_value: str, limit: int = 220) -> str:
 def _format_retrieved_context(retrieved_context: list[dict]) -> list[dict]:
     formatted: list[dict] = []
     for rank, item in enumerate(retrieved_context, start=1):
+        final_score = item.get("final_score", item.get("relevance_score"))
         formatted.append(
             {
                 "rank": rank,
@@ -105,8 +106,10 @@ def _format_retrieved_context(retrieved_context: list[dict]) -> list[dict]:
                 "country": item.get("country"),
                 "event_type": item.get("event_type"),
                 "url": item.get("url"),
-                "relevance_score": item.get("relevance_score"),
-                "tfidf_score": item.get("tfidf_score"),
+                "relevance_score": final_score,
+                "final_score": final_score,
+                "semantic_score": item.get("semantic_score"),
+                "keyword_score": item.get("keyword_score"),
                 "metadata_boost": item.get("metadata_boost"),
                 "is_fallback": bool(item.get("is_fallback", False)),
                 "preview": _preview_chunk_text(item.get("chunk_text", "")),
