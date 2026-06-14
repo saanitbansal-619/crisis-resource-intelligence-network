@@ -843,6 +843,45 @@ def inject_styles() -> None:
             padding-top: 0.75rem;
             border-top: 1px solid {COLOR_BORDER};
         }}
+        .ai-brief-card {{
+            margin-top: 0.75rem;
+        }}
+        .ai-brief-draft-card {{
+            margin-top: 0.75rem;
+        }}
+        .ai-brief-draft-label {{
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: {COLOR_PRIMARY};
+            margin-bottom: 0.35rem;
+        }}
+        .ai-brief-note {{
+            font-size: 0.92rem;
+            color: {COLOR_SECONDARY};
+            line-height: 1.6;
+            margin: 0 0 0.85rem 0;
+        }}
+        .ai-brief-meta {{
+            font-size: 0.78rem;
+            color: {COLOR_MUTED};
+            margin-bottom: 0.75rem;
+        }}
+        .ai-brief-output-wrap {{
+            background: {COLOR_CARD};
+            border: 1px solid {COLOR_BORDER};
+            border-radius: 10px;
+            padding: 1rem 1.1rem;
+            margin-top: 0.75rem;
+            box-shadow: 0 1px 3px rgba(16, 24, 40, 0.05);
+        }}
+        .ai-brief-output-wrap .ai-brief-transparency {{
+            font-size: 0.86rem;
+            color: {COLOR_MUTED};
+            line-height: 1.55;
+            margin: 0.85rem 0 0 0;
+            padding-top: 0.75rem;
+            border-top: 1px solid {COLOR_BORDER};
+        }}
         </style>
         """,
         unsafe_allow_html=True,
@@ -895,6 +934,17 @@ def get_rag_zone_context(base_url: str, zone_id: str) -> dict | None:
     return fetch_json(f"/reports/rag-zone-context/{zone_id}", base_url)
 
 
+def get_ai_zone_briefing(base_url: str, zone_id: str) -> dict | None:
+    """Fetch AI-assisted briefing (longer timeout for local Ollama generation)."""
+    url = f"{base_url.rstrip('/')}/reports/ai-zone-briefing/{zone_id}"
+    try:
+        response = requests.get(url, timeout=200)
+        response.raise_for_status()
+        return response.json()
+    except requests.RequestException:
+        return None
+
+
 RAG_UNAVAILABLE_MESSAGE = (
     "Retrieved crisis context is currently unavailable. "
     "Run the RAG corpus/chunk scripts and restart the API."
@@ -903,6 +953,16 @@ RAG_EMPTY_MESSAGE = "No retrieved crisis context available for this zone."
 RAG_TRANSPARENCY_NOTE = (
     "This is retrieval-based context from ReliefWeb/GDACS records. "
     "It is not an LLM-generated analysis."
+)
+AI_BRIEF_UNAVAILABLE_MESSAGE = (
+    "AI-assisted briefing is currently unavailable. "
+    "Make sure Ollama is running and llama3.2 is available."
+)
+AI_BRIEF_NOTE = (
+    "Optional local LLM draft generated from structured zone metrics and retrieved crisis context."
+)
+AI_BRIEF_REVIEW_NOTE = (
+    "This is an AI-assisted draft and should be reviewed before operational use."
 )
 
 
@@ -1273,6 +1333,67 @@ def render_retrieved_crisis_context(rag_context: dict | None, zone_id: str = "")
         st.markdown('<div class="rag-expander-wrap"></div>', unsafe_allow_html=True)
 
 
+def _clear_ai_brief_state() -> None:
+    st.session_state["ai_brief_zone_id"] = None
+    st.session_state["ai_brief_data"] = None
+    st.session_state["ai_brief_requested"] = False
+
+
+def render_ai_assisted_briefing_section(base_url: str, zone_id: str) -> None:
+    """Render optional AI-assisted briefing generation for the selected zone."""
+    st.markdown(
+        f"""
+        <div class="zone-brief-card ai-brief-card">
+            <div class="rag-context-title">AI-Assisted Briefing</div>
+            <p class="ai-brief-note">{html.escape(AI_BRIEF_NOTE)}</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if st.button(
+        "Generate AI-Assisted Brief",
+        key=f"generate_ai_brief_{zone_id}",
+        use_container_width=True,
+    ):
+        with st.spinner("Generating AI-assisted brief locally with Ollama..."):
+            ai_data = get_ai_zone_briefing(base_url, zone_id)
+        st.session_state["ai_brief_zone_id"] = zone_id
+        st.session_state["ai_brief_data"] = ai_data
+        st.session_state["ai_brief_requested"] = True
+
+    if st.session_state.get("ai_brief_zone_id") != zone_id:
+        return
+
+    ai_data = st.session_state.get("ai_brief_data")
+    if not ai_data:
+        if st.session_state.get("ai_brief_requested"):
+            st.warning(AI_BRIEF_UNAVAILABLE_MESSAGE)
+        return
+
+    model = ai_data.get("model") or "llama3.2"
+    briefing_text = (ai_data.get("briefing_text") or "").strip()
+    transparency_note = (ai_data.get("transparency_note") or AI_BRIEF_REVIEW_NOTE).strip()
+
+    st.markdown(
+        f"""
+        <div class="zone-brief-card ai-brief-draft-card">
+            <div class="ai-brief-draft-label">AI-Assisted Draft</div>
+            <p class="ai-brief-meta">Model: {html.escape(str(model))} · Local Ollama</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if briefing_text:
+        st.markdown('<div class="ai-brief-output-wrap">', unsafe_allow_html=True)
+        st.markdown(briefing_text)
+        st.markdown(
+            f'<p class="ai-brief-transparency">{html.escape(transparency_note)}</p>',
+            unsafe_allow_html=True,
+        )
+
+
 def _pdf_escape(text: str) -> str:
     return (
         str(text)
@@ -1426,6 +1547,12 @@ def _init_map_briefing_state() -> None:
         st.session_state["rag_context_zone_id"] = None
     if "rag_zone_context" not in st.session_state:
         st.session_state["rag_zone_context"] = None
+    if "ai_brief_zone_id" not in st.session_state:
+        st.session_state["ai_brief_zone_id"] = None
+    if "ai_brief_data" not in st.session_state:
+        st.session_state["ai_brief_data"] = None
+    if "ai_brief_requested" not in st.session_state:
+        st.session_state["ai_brief_requested"] = False
 
 
 def _load_zone_briefing(base_url: str, zone_id: str) -> dict | None:
@@ -1435,6 +1562,7 @@ def _load_zone_briefing(base_url: str, zone_id: str) -> dict | None:
         st.session_state["show_zone_brief"] = False
         st.session_state["rag_context_zone_id"] = None
         st.session_state["rag_zone_context"] = None
+        _clear_ai_brief_state()
         for key in list(st.session_state.keys()):
             if str(key).startswith("brief_action_status_"):
                 del st.session_state[key]
@@ -2216,6 +2344,7 @@ def render_map_tab(base_url: str) -> None:
         zone_id = st.session_state["selected_zone_id"]
         rag_context = _load_rag_zone_context(base_url, zone_id)
         render_zone_operational_brief_preview(briefing, rag_context, zone_id=zone_id)
+        render_ai_assisted_briefing_section(base_url, zone_id)
         render_brief_secondary_actions(briefing, zone_id, rag_context)
 
 

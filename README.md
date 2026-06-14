@@ -6,7 +6,7 @@ A full-stack data engineering, analytics, and machine learning platform for trac
 
 Humanitarian crises create urgent, uneven demand for food, water, shelter, medical supplies, and personnel. Public data sources such as ReliefWeb and GDACS publish alerts and situation reports, but turning that information into actionable resource intelligence — knowing where shortages exist and where surplus can be redirected — requires ingestion, normalization, analytics, and accessible tooling. This project builds that pipeline end to end.
 
-## Planned Architecture
+## Architecture
 
 ```
 ReliefWeb API ──┐
@@ -15,22 +15,38 @@ GDACS RSS    ───┘                                              │
                                                                ├──> Mismatch Analytics
                                                                ├──> FastAPI (REST)
                                                                ├──> Streamlit Dashboard
-                                                               ├──> ML Shortage-Risk Prediction (later)
-                                                               └──> RAG Crisis Assistant (later)
+                                                               ├──> RAG corpus + pgvector retrieval
+                                                               └──> Local LLM briefing (Ollama)
+```
+
+### RAG pipeline
+
+The project includes a retrieval-augmented briefing layer:
+
+```
+ReliefWeb/GDACS crisis records
+  → corpus building
+  → document chunking
+  → Ollama nomic-embed-text embeddings
+  → PostgreSQL pgvector vector storage
+  → hybrid semantic + keyword retrieval
+  → metadata boosting by country/event/source
+  → fallback labeling
+  → local LLM briefing generation with Ollama llama3.2
 ```
 
 ## Tech Stack
 
-| Layer        | Technology                          |
-|--------------|-------------------------------------|
-| Ingestion    | Python, requests, pandas            |
-| Database     | PostgreSQL, SQLAlchemy              |
-| Analytics    | SQL, pandas                         |
-| Backend API  | FastAPI, uvicorn                    |
-| Dashboard    | Streamlit, plotly                   |
-| ML (planned) | scikit-learn / similar              |
-| RAG (planned)| embeddings + vector store           |
-| Local infra  | Docker Compose (PostgreSQL)         |
+| Layer        | Technology                                      |
+|--------------|-------------------------------------------------|
+| Ingestion    | Python, requests, pandas                        |
+| Database     | PostgreSQL, pgvector, SQLAlchemy                |
+| Analytics    | SQL, pandas, scikit-learn (TF-IDF keyword scoring) |
+| Backend API  | FastAPI, uvicorn                                |
+| Dashboard    | Streamlit, Plotly                               |
+| Embeddings   | Ollama `nomic-embed-text` (768-dim)             |
+| Generation   | Ollama `llama3.2` (local LLM)                   |
+| Local infra  | Docker Compose (PostgreSQL + pgvector)          |
 
 ## Current Status
 
@@ -44,7 +60,9 @@ GDACS RSS    ───┘                                              │
 
 **Week 5 complete:** Streamlit humanitarian coordination dashboard consumes the FastAPI backend with an NGO-oriented visual style for stakeholder presentation.
 
-**Week 6 Part 1 complete:** Zone briefing endpoint and map-based Zone Operational Briefs on the Operational Map page generate template-based coordination briefs from PostgreSQL-backed data. No external LLM is required yet.
+**Week 6 Part 1 complete:** Zone briefing endpoint and map-based Zone Operational Briefs on the Operational Map page generate template-based coordination briefs from PostgreSQL-backed data.
+
+**Week 6 Part 2 complete:** RAG retrieval over ReliefWeb/GDACS records with pgvector semantic search, hybrid keyword scoring, metadata boosting, fallback labeling, and optional local LLM-assisted operational briefings via Ollama.
 
 ### Working features
 
@@ -52,15 +70,19 @@ GDACS RSS    ───┘                                              │
 - GDACS alert ingestion
 - Raw data saving to `data/raw/`
 - ReliefWeb and GDACS cleaning scripts producing processed CSVs in `data/processed/`
-- Local PostgreSQL database via Docker Compose (host port 5433)
+- Local PostgreSQL database via Docker Compose with pgvector (host port 5433)
 - Schema and loader scripts for `crisis_reports` and `gdacs_alerts` tables
 - Simulated organizations, zones, resource inventory, and resource requests
 - Basic pandas inspection of ReliefWeb reports and GDACS alerts
 - Local-only development setup (FastAPI and Streamlit starters included)
+- RAG corpus building, chunking, embedding, and hybrid retrieval
+- Zone-level retrieved crisis context and optional AI-assisted briefing endpoints
+- Operational Map with template briefs, retrieved context, and on-demand AI draft generation
 
 ### Next steps
 
-- Add ML shortage-risk prediction and RAG crisis assistant
+- Add ML shortage-risk prediction
+- Scheduled ingestion and cloud deployment
 
 ## Data Sources
 
@@ -119,7 +141,7 @@ These files standardize dates, flatten nested fields, and prepare crisis metadat
 
 Start the local database, verify connectivity, and load processed CSVs into PostgreSQL tables.
 
-Docker maps **host port 5433** to **container port 5432** so this project does not conflict with other PostgreSQL services on port 5432.
+Docker uses the **pgvector/pgvector** image and maps **host port 5433** to **container port 5432** so this project does not conflict with other PostgreSQL services on port 5432.
 
 ```bash
 docker compose up -d
@@ -189,15 +211,20 @@ Endpoint groups:
 | `/crises` | ReliefWeb reports and GDACS alerts |
 | `/resources` | Zones, organizations, inventory, requests |
 | `/mismatches` | Shortage/surplus analytics with filters |
-| `/reports` | KPI overview and resource summaries |
+| `/reports` | KPI overview, zone briefings, RAG context, AI briefings |
 
 Zone briefing (consolidated data for one zone):
 
 ```
 GET /reports/zone-briefing/{zone_id}
+GET /reports/rag-zone-context/{zone_id}
+GET /reports/ai-zone-briefing/{zone_id}
 ```
 
-Example: http://127.0.0.1:8001/reports/zone-briefing/ZONE001
+Examples:
+- http://127.0.0.1:8001/reports/zone-briefing/ZONE001
+- http://127.0.0.1:8001/reports/rag-zone-context/ZONE001
+- http://127.0.0.1:8001/reports/ai-zone-briefing/ZONE001
 
 ## Week 5: Streamlit Operations Dashboard
 
@@ -223,15 +250,64 @@ The dashboard connects to the local API at `http://127.0.0.1:8001` internally an
 
 The **Operational Map** supports selected-zone briefing preview. Users select a zone via map marker click or the zone selector, review a compact **Selected Zone** panel, then choose to view the formatted **Zone Operational Brief** in-app, download a PDF, or open copy-ready text. The full brief is not shown until the user clicks **View Operational Brief**.
 
-Briefings are template-based and grounded in PostgreSQL data—no external LLM, RAG, or vector database is required yet. PDF export is optional and uses ReportLab (`pip install reportlab`). If ReportLab is not installed, the dashboard shows a clear warning instead of crashing.
+Template-based operational briefs remain the **stable default**. They are deterministic and grounded in PostgreSQL data—no external LLM required. PDF export is optional and uses ReportLab (`pip install reportlab`). If ReportLab is not installed, the dashboard shows a clear warning instead of crashing.
 
-**Backend endpoint:**
+**Operational Map features:**
+
+- Zone selection via map marker or dropdown
+- Template operational briefing (default)
+- Retrieved crisis context from ReliefWeb/GDACS records
+- Optional **Generate AI-Assisted Brief** button (on-demand, local Ollama)
+- PDF download and copy brief actions
+- Data transparency note (public vs simulated sources)
+
+## Week 6 Part 2: RAG and Local LLM Briefings
+
+### Retrieval-augmented context
+
+After viewing a template brief, the dashboard can fetch **Retrieved Crisis Context** for the selected zone. Retrieval uses hybrid semantic + keyword search over ReliefWeb/GDACS chunks stored in PostgreSQL with pgvector. Results are boosted by country, event type, and source metadata. If too few country-specific records match, fallback results are included and labeled `is_fallback: true`.
+
+**Setup (one-time, after PostgreSQL is running and Ollama is available):**
+
+```bash
+# Start Ollama and pull models
+ollama pull nomic-embed-text
+ollama pull llama3.2
+
+# Build corpus, chunks, and vector tables
+python -m rag.build_corpus
+python -m rag.chunk_documents
+python -m database.create_rag_tables
+python -m rag.embed_chunks
+```
+
+**Backend endpoints:**
 
 ```
-GET /reports/zone-briefing/{zone_id}
+GET /reports/rag-zone-context/{zone_id}
+GET /reports/ai-zone-briefing/{zone_id}
 ```
 
-Example: http://127.0.0.1:8001/reports/zone-briefing/ZONE001
+### Local LLM generation
+
+AI-assisted operational briefings are generated **locally** using Ollama `llama3.2`. The prompt is grounded in structured zone metrics and retrieved context:
+
+- The selected zone's related disaster alert is treated as the **primary event**
+- Retrieved sources are **supporting context only**
+- The model is instructed **not to invent facts**
+- The dashboard labels the output as an **AI-assisted draft requiring review**
+- Template-based operational briefs remain the stable default
+
+AI briefings are optional and on-demand. They do not replace the template brief, PDF export, or copy actions.
+
+## Limitations
+
+This is a **portfolio prototype**, not a production deployment:
+
+- Operational inventory and resource request data are **simulated prototype data**, not real NGO supply systems
+- Public humanitarian records are limited to what ReliefWeb and GDACS provide
+- AI-generated briefings are **drafts** and should be reviewed before any operational use
+- The system does not make final operational decisions and should not be presented as production-ready
 
 ## Dashboard Screenshots
 
@@ -252,7 +328,7 @@ CrisisResourceIntel/
 ├── backend/         # FastAPI application
 ├── dashboard/       # Streamlit UI
 ├── ml/              # Shortage-risk prediction (future)
-├── rag/             # Crisis assistant (future)
+├── rag/             # Corpus, embeddings, hybrid retrieval, LLM briefing
 ├── data/            # Raw, processed, and sample data
 ├── docs/            # Architecture and dev notes
 └── tests/           # Test suite (future)

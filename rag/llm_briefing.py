@@ -10,7 +10,7 @@ OLLAMA_GENERATE_URL = "http://localhost:11434/api/generate"
 OLLAMA_TAGS_URL = "http://localhost:11434/api/tags"
 DEFAULT_MODEL = "llama3.2"
 GENERATE_TIMEOUT = 180
-MAX_BRIEFING_CHARS = 1500
+MAX_BRIEFING_CHARS = 1800
 MAX_CONTEXT_CHUNKS = 2
 CONTEXT_PREVIEW_CHARS = 250
 
@@ -134,32 +134,84 @@ def _format_related_alert(related_alert: dict | None) -> str:
     if not related_alert:
         return "None linked."
 
-    return (
-        f"Title: {_truncate(related_alert.get('title'), 120)} | "
-        f"Event: {_clean(related_alert.get('event_type')) or '—'} | "
-        f"Severity: {_clean(related_alert.get('severity_color')) or '—'}"
-    )
+    parts = [
+        f"Title: {_truncate(related_alert.get('title'), 160)}",
+        f"Event: {_clean(related_alert.get('event_type')) or '—'}",
+        f"Severity: {_clean(related_alert.get('severity_color')) or '—'}",
+    ]
+    description = _truncate(related_alert.get("description"), 300)
+    if description:
+        parts.append(f"Description: {description}")
+    return " | ".join(parts)
 
 
-def _format_retrieved_context(retrieved_context: list, rag_unavailable: bool) -> str:
+def _has_fallback_context(retrieved_context: list) -> bool:
+    return any(item.get("is_fallback") is True for item in retrieved_context)
+
+
+def _format_retrieved_context(
+    retrieved_context: list,
+    rag_unavailable: bool,
+    has_fallback_context: bool = False,
+) -> str:
     if rag_unavailable:
-        return "Unavailable. Use structured metrics only."
+        return "Unavailable. Use structured metrics and primary alert only."
 
     if not retrieved_context:
         return "None found."
 
-    lines: list[str] = []
+    lines: list[str] = ["Supporting evidence only. Do not use as the primary event."]
+    country_specific = 0
+
     for index, item in enumerate(retrieved_context[:MAX_CONTEXT_CHUNKS], start=1):
+        is_fallback = item.get("is_fallback") is True
+        if not is_fallback:
+            country_specific += 1
+
+        title = _truncate(item.get("title"), 120)
+        source_type = _clean(item.get("source_type")) or "unknown source"
+        country = _clean(item.get("country")) or "—"
+        event_type = _clean(item.get("event_type")) or "—"
+        context_label = "fallback/general context" if is_fallback else "country-specific"
         preview = _truncate(item.get("preview") or item.get("chunk_text"), CONTEXT_PREVIEW_CHARS)
+
         lines.append(
-            f"{index}. title={_truncate(item.get('title'), 120)}; "
-            f"source={_clean(item.get('source_type')) or '—'}; "
-            f"country={_clean(item.get('country')) or '—'}; "
-            f"event={_clean(item.get('event_type')) or '—'}; "
-            f"fallback={bool(item.get('is_fallback'))}; "
-            f"preview={preview}"
+            f"{index}. {source_type} record ({context_label}): "
+            f"\"{title}\" — {country}, {event_type}. Summary: {preview}"
         )
+
+    if has_fallback_context:
+        lines.append(
+            "Some retrieved sources are fallback context and should not be treated as "
+            "direct evidence for the selected country."
+        )
+    elif country_specific:
+        lines.append("All retrieved sources provided to the model are country-specific supporting context.")
+
     return "\n".join(lines)
+
+
+def _retrieved_context_prompt_rules(has_fallback_context: bool) -> str:
+    if has_fallback_context:
+        fallback_rule = (
+            "- Some retrieved sources are fallback context and should not be treated as direct evidence."
+        )
+    else:
+        fallback_rule = (
+            "- Retrieved sources are country-specific supporting context.\n"
+            "- Never say fallback sources are present."
+        )
+    return textwrap.dedent(
+        f"""
+        Retrieved Crisis Context section rules:
+        - Use at most 3 short bullets in this section only.
+        - Do not include long quoted source titles.
+        - Summarize in this style (adapt source type, country, and event to the data):
+        - Country-specific GDACS records show multiple Philippines earthquake alerts near the selected event.
+        - Retrieved context supports situational awareness but does not replace the primary alert.
+        {fallback_rule}
+        """
+    ).strip()
 
 
 def build_ai_briefing_prompt(
@@ -174,48 +226,64 @@ def build_ai_briefing_prompt(
     zone_name = _clean(zone.get("zone_name")) or "Unknown Zone"
     country = _clean(zone.get("country")) or "—"
     admin_region = _clean(zone.get("admin_region")) or "—"
+    population = _clean(zone.get("population_estimate")) or "—"
+    context_items = retrieved_context[:MAX_CONTEXT_CHUNKS]
+    has_fallback_context = _has_fallback_context(context_items)
+    retrieved_context_rules = _retrieved_context_prompt_rules(has_fallback_context)
 
     return textwrap.dedent(
         f"""
-        Write a concise operational briefing for humanitarian coordination.
+        Write a concise operational briefing using only the data below.
 
-        Rules:
-        - Write a concise operational briefing in 5 short bullet points.
-        - Do not exceed 180 words.
-        - Use only the provided information.
-        - Do not invent facts.
-        - If retrieved context is limited or fallback, state that.
-        - Use exact source wording for dates, times, event titles, and severity levels.
-        - Do not reinterpret ambiguous dates.
-        - Preserve dates exactly as provided in the source text.
-        - If a date appears as 08/06/2026, keep it as 08/06/2026 instead of converting it to a month name.
-        - Do not infer month/day order unless explicitly provided.
+        Output format:
+        - Use exactly 5 sections with these headings only:
+        ### Situation
+        ### Priority Resource Gaps
+        ### Retrieved Crisis Context
+        ### Recommended Actions
+        ### Limitations
+        - Use maximum 2 bullets per section (Retrieved Crisis Context may use up to 3 per its rules).
+        - Do not use nested bullets or tabs.
+        - Keep each bullet under 25 words.
+        - Do not add a document title or duplicate headings.
+        - Complete all five sections. Finish the Limitations section fully.
 
-        Sections:
-        - Situation
-        - Priority Gaps
-        - Retrieved Context
-        - Recommended Actions
-        - Limitations
+        Grounding rules:
+        - The selected related alert is the PRIMARY event in Situation.
+        - Retrieved context is supporting evidence only; do not replace the primary event.
+        - Preserve source dates exactly as provided (e.g. keep 08/06/2026 as 08/06/2026).
+        - Use only the provided information. Do not invent facts.
+        - Do not output raw metadata, JSON, or key=value fields.
+
+        {retrieved_context_rules}
 
         Limitations section rules:
-        - Do not claim population or affected-area information is unavailable if it is provided in the prompt.
-        - Mention that operational inventory and request data are simulated prototype data.
-        - Mention that retrieved context is limited to available ReliefWeb/GDACS records.
-        - Mention that this AI output is a draft and should be reviewed before operational use.
-        - Avoid vague limitations such as "limited information on affected areas" unless that is explicitly true from the provided data.
+        - Use exactly these 2 bullets and no others:
+        - Operational inventory and request data are simulated prototype data.
+        - Retrieved context is limited to available ReliefWeb/GDACS records, and the AI draft should be reviewed before operational use.
+        - Do not discuss missing population data unless explicitly asked.
+        - Do not claim affected population data is unavailable.
+        - Do not add new limitations beyond the provided limitations.
 
         Zone: {zone_name}
         Location: {country}, {admin_region}
-        Alert: {_format_related_alert(related_alert)}
+        Population estimate: {population}
+
+        PRIMARY RELATED ALERT (use this as the main event in Situation):
+        {_format_related_alert(related_alert)}
+
         Priority needs:
         {_format_priority_needs(priority_needs)}
+
         Inventory:
         {_format_inventory(inventory)}
+
         Requests:
         {_format_requests(requests_list)}
-        Retrieved context:
-        {_format_retrieved_context(retrieved_context, rag_unavailable)}
+
+        SUPPORTING RETRIEVED CONTEXT (supporting evidence only):
+        {_format_retrieved_context(context_items, rag_unavailable, has_fallback_context)}
+        Fallback context present: {str(has_fallback_context).lower()}
         """
     ).strip()
 
@@ -230,7 +298,7 @@ def _call_ollama_generate(prompt: str, model: str = DEFAULT_MODEL) -> str:
                 "stream": False,
                 "options": {
                     "temperature": 0.2,
-                    "num_predict": 220,
+                    "num_predict": 450,
                 },
             },
             timeout=GENERATE_TIMEOUT,

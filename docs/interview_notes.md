@@ -6,7 +6,7 @@ Interview prep guide for explaining this project to recruiters, professors, and 
 
 ## 1. 30-Second Pitch
 
-I built a full-stack crisis resource intelligence platform that ingests public disaster alerts and humanitarian reports from GDACS and ReliefWeb, stores structured data in PostgreSQL, computes zone-level supply-demand mismatch scores using simulated NGO resource data, and presents priority needs through a FastAPI-backed Streamlit dashboard with operational map briefings.
+I built a full-stack crisis resource intelligence platform that ingests public disaster alerts and humanitarian reports from GDACS and ReliefWeb, stores structured data in PostgreSQL, computes zone-level supply-demand mismatch scores using simulated NGO resource data, and presents priority needs through a FastAPI-backed Streamlit dashboard. The Operational Map includes template zone briefings, hybrid RAG retrieval over ReliefWeb/GDACS records with pgvector, and optional local LLM-assisted draft briefings via Ollama.
 
 ---
 
@@ -33,7 +33,7 @@ The project demonstrates end-to-end skills across:
 - analytics and scoring logic
 - dashboard design for non-technical stakeholders
 - humanitarian decision-support workflows
-- a foundation for future AI/RAG integration
+- retrieval-augmented context and local LLM draft generation
 
 It is structured as a portfolio system that shows I can move from raw external data to a usable operational interface.
 
@@ -47,11 +47,23 @@ Pipeline:
 ReliefWeb API + GDACS RSS
     → ingestion scripts
     → processed CSVs
-    → PostgreSQL
+    → PostgreSQL (+ pgvector for RAG chunks)
     → mismatch scoring engine
     → FastAPI backend
     → Streamlit dashboard
-    → operational map and zone briefings
+    → operational map, template briefs, RAG context, optional LLM drafts
+```
+
+**RAG pipeline:**
+
+```
+ReliefWeb/GDACS records
+    → corpus building → chunking
+    → Ollama nomic-embed-text embeddings
+    → PostgreSQL pgvector storage
+    → hybrid semantic + keyword retrieval + metadata boosting
+    → fallback labeling
+    → optional Ollama llama3.2 AI-assisted briefing
 ```
 
 **Ingestion:** Python scripts fetch ReliefWeb reports and GDACS alerts and save raw outputs.
@@ -125,7 +137,9 @@ FastAPI exposes analytics and database outputs through REST endpoints. This sepa
 | `/health` | API and database connectivity check |
 | `/reports/overview` | System KPIs |
 | `/reports/resource-summary` | Resource-type mismatch summary |
-| `/reports/zone-briefing/{zone_id}` | Consolidated zone briefing JSON |
+| `/reports/zone-briefing/{zone_id}` | Consolidated zone briefing JSON (template) |
+| `/reports/rag-zone-context/{zone_id}` | Hybrid-retrieved ReliefWeb/GDACS context |
+| `/reports/ai-zone-briefing/{zone_id}` | Optional local LLM-assisted draft briefing |
 | `/mismatches/critical` | Critical shortages |
 | `/mismatches/surplus` | Surplus resources |
 | `/resources/zones` | Crisis response zones |
@@ -152,18 +166,20 @@ The Streamlit dashboard is designed for humanitarian stakeholders, not developer
 
 1. User selects a zone on the map or via dropdown.
 2. A **Selected Zone** summary card appears.
-3. User clicks **View Operational Brief** to open the full preview.
-4. User can **Download PDF** or **Copy Brief** (clipboard) from export actions below the brief.
+3. User clicks **View Operational Brief** to open the template brief preview.
+4. Retrieved **Crisis Context** loads from ReliefWeb/GDACS records (hybrid RAG).
+5. User can optionally click **Generate AI-Assisted Brief** for a local Ollama draft.
+6. User can **Download PDF** or **Copy Brief** (clipboard) from export actions below the template brief.
 
-The dashboard calls the FastAPI backend internally; it does not connect directly to PostgreSQL.
+The dashboard calls the FastAPI backend internally; it does not connect directly to PostgreSQL. Template briefs remain the stable default. AI output is labeled as a draft requiring review.
 
 ---
 
 ## 9. Zone Operational Briefing Explanation
 
-The current briefing is **template-based** and grounded in structured database/API outputs from `GET /reports/zone-briefing/{zone_id}`.
+The **template-based** briefing is the stable default. It is grounded in structured database/API outputs from `GET /reports/zone-briefing/{zone_id}`.
 
-Each brief summarizes:
+Each template brief summarizes:
 
 - zone overview (name, location, population)
 - related disaster alert (when linked via `crisis_event_id`)
@@ -173,59 +189,82 @@ Each brief summarizes:
 - operational interpretation and recommended actions
 - data transparency note (public vs simulated sources)
 
-I built the briefing workflow on the **Operational Map** so reports are generated in geographic context. Before adding LLMs, I wanted deterministic, explainable outputs tied to PostgreSQL metrics.
+I built the briefing workflow on the **Operational Map** so reports are generated in geographic context. Template outputs are deterministic and explainable before any AI layer is invoked.
+
+### Retrieved crisis context
+
+After viewing the template brief, the dashboard fetches hybrid-retrieved ReliefWeb/GDACS context via `GET /reports/rag-zone-context/{zone_id}`. This is retrieval-based supporting context—not an LLM analysis.
+
+### Optional AI-assisted draft
+
+Users can optionally generate a local LLM draft via `GET /reports/ai-zone-briefing/{zone_id}` (Ollama `llama3.2`). The related disaster alert is the primary event; retrieved sources are supporting context only. The dashboard labels this output as an AI-assisted draft requiring review.
 
 ---
 
-## 10. Is This RAG?
+## 10. RAG and Local LLM Explanation
 
-**Partially — retrieval baseline only.**
+**Yes — the project includes a working RAG layer and optional local LLM briefing.**
 
-The dashboard briefing is still template-based. A first RAG layer now exists offline in the `rag/` package:
+### How to explain it in an interview
 
-- builds a corpus from ReliefWeb and GDACS rows in PostgreSQL
-- chunks report/alert text locally
-- retrieves relevant passages with TF-IDF keyword search
+> The RAG system first retrieves relevant crisis records using pgvector semantic search and keyword scoring. It then applies metadata boosts for country and event type so that a zone in the Philippines retrieves Philippines earthquake context rather than generic disaster records. If too few country-specific records exist, fallback results are included but clearly labeled. A local Ollama LLM can then generate an AI-assisted operational draft from the structured zone metrics and retrieved context.
 
-It does **not** yet use embeddings, pgvector, Ollama, OpenAI, or LLM generation.
+### RAG pipeline
 
-**Planned next RAG steps:**
+```
+ReliefWeb/GDACS crisis records
+  → corpus building
+  → document chunking
+  → Ollama nomic-embed-text embeddings
+  → PostgreSQL pgvector vector storage
+  → hybrid semantic + keyword retrieval
+  → metadata boosting by country/event/source
+  → fallback labeling
+  → local LLM briefing generation with Ollama llama3.2
+```
 
-- pgvector semantic search and hybrid retrieval
-- local LLM-generated briefings grounded in SQL metrics + retrieved context
+### Key design choices
 
-The zone briefing endpoint and mismatch scores are designed to keep future AI outputs anchored to structured data rather than free-form generation alone.
+| Choice | Rationale |
+|--------|-----------|
+| Hybrid retrieval | Semantic search catches meaning; TF-IDF catches exact terms; metadata boost aligns results to zone country/event |
+| Fallback labeling | When country-specific coverage is thin, general records are included but marked `is_fallback: true` |
+| Primary alert grounding | The zone's related GDACS alert is the primary event; retrieved context is supporting only |
+| Local Ollama | No external API keys; drafts run on the developer machine |
+| Template brief as default | Deterministic, explainable output remains the stable coordination brief |
 
----
+### API endpoints
 
-## RAG Layer Status
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /reports/rag-zone-context/{zone_id}` | Hybrid-retrieved ReliefWeb/GDACS context |
+| `GET /reports/ai-zone-briefing/{zone_id}` | Optional local LLM-assisted draft |
 
-The first RAG layer builds a local searchable corpus from ReliefWeb and GDACS records stored in PostgreSQL. It chunks report/alert text and uses TF-IDF retrieval to find relevant crisis context for a selected zone. This is a lightweight retrieval baseline before adding pgvector semantic search, hybrid retrieval, or local LLM-generated briefings.
-
-The RAG layer now exposes a FastAPI endpoint for zone-specific retrieved crisis context, allowing the dashboard to later display retrieved ReliefWeb/GDACS context alongside structured shortage metrics.
-
-**API endpoint:** `GET /reports/rag-zone-context/{zone_id}`
-
-The next RAG phase adds pgvector-enabled PostgreSQL so the system can store embeddings for ReliefWeb/GDACS chunks and support semantic search alongside keyword/metadata retrieval.
-
-The project now includes a pgvector-backed semantic retrieval phase. ReliefWeb/GDACS chunks can be embedded locally using Ollama `nomic-embed-text` and stored in PostgreSQL with `vector(768)`. This enables semantic search over crisis context while keeping the earlier TF-IDF retriever as a baseline/fallback.
-
-**Offline commands:**
+### Offline setup commands
 
 ```bash
+ollama pull nomic-embed-text
+ollama pull llama3.2
 python -m rag.build_corpus
 python -m rag.chunk_documents
-python -m rag.simple_retriever "Philippines earthquake water food medical needs"
 python -m database.create_rag_tables
 python -m rag.embed_chunks
-python -m rag.semantic_retriever "Philippines earthquake water food medical needs"
+python -m rag.hybrid_retriever "Philippines earthquake water food medical needs"
 ```
+
+### Limitations (be honest in interviews)
+
+- Operational inventory and resource request data are **simulated prototype data**
+- Public humanitarian records are limited to ReliefWeb and GDACS coverage
+- AI-generated briefings are **drafts** and should be reviewed before operational use
+- This is a **portfolio prototype**, not a real deployment
+- Do not present the system as production-ready or imply real NGO inventory access
+- The AI does not make final operational decisions
 
 ---
 
 ## 11. What I Would Improve Next
 
-- RAG-based briefings over ReliefWeb/GDACS text
 - scheduled ingestion with Airflow
 - demand forecasting / ML shortage-risk models
 - cloud deployment (e.g. containerized API + managed PostgreSQL)
@@ -233,6 +272,7 @@ python -m rag.semantic_retriever "Philippines earthquake water food medical need
 - integration with real NGO inventory systems (with proper data agreements)
 - better geospatial matching between alerts and zones
 - improved alert-to-zone linking and normalization
+- stronger evaluation of RAG retrieval quality across more crisis types
 
 ---
 
@@ -264,7 +304,11 @@ python -m rag.semantic_retriever "Philippines earthquake water food medical need
 
 ### Q: Is the briefing AI-generated?
 
-**A:** No. It is template-based today, built from structured API/database outputs. RAG/LLM enrichment is a planned next step, with SQL metrics kept as the grounding layer.
+**A:** The **default** operational brief is template-based, built from structured API/database outputs. Optionally, users can generate a **local LLM-assisted draft** via Ollama `llama3.2`, grounded in zone metrics and retrieved ReliefWeb/GDACS context. The dashboard labels that output as a draft requiring review. The AI does not make final operational decisions.
+
+### Q: How does the RAG layer work?
+
+**A:** ReliefWeb and GDACS records are chunked and embedded with Ollama `nomic-embed-text`, stored in PostgreSQL with pgvector, and retrieved with hybrid semantic + TF-IDF keyword scoring plus metadata boosts for country and event type. Fallback results are labeled when country-specific coverage is thin. Retrieved context supports—but does not replace—the zone's primary disaster alert in AI drafts.
 
 ### Q: How do you link zones to GDACS alerts?
 
@@ -278,14 +322,18 @@ python -m rag.semantic_retriever "Philippines earthquake water food medical need
 2. Open **Priority Needs** — point out highest mismatch scores.
 3. Open **Operational Map** — select a zone, view **Selected Zone** panel.
 4. Click **View Operational Brief** — walk through priority gaps and related alert.
-5. Mention **Download PDF** / **Copy Brief** as export options.
-6. Optionally open `/docs` on the FastAPI backend to show the API layer.
+5. Show **Retrieved Crisis Context** — explain hybrid RAG and fallback labeling.
+6. Optionally click **Generate AI-Assisted Brief** — note it is a local draft requiring review.
+7. Mention **Download PDF** / **Copy Brief** as export options for the template brief.
+8. Optionally open `/docs` on the FastAPI backend to show RAG and AI endpoints.
 
 ---
 
 ## Tone Reminders
 
 - Be accurate about what is real vs simulated.
-- Do not overhype AI capabilities—the briefing is template-based today.
+- Template briefs are the default; AI drafts are optional and require review.
+- Do not overhype AI capabilities or imply production readiness.
+- Do not imply real NGO inventory access or that the AI makes final operational decisions.
 - Emphasize explainability and decision support for humanitarian coordination.
 - Do not share `.env` values, credentials, or internal database passwords in interviews.

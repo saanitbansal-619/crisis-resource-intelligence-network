@@ -82,3 +82,19 @@ Moved the briefing workflow into the Operational Map. Users can select a crisis 
 ## Week 6: In-App Zone Brief Preview and PDF Export
 
 Improved the Operational Map briefing workflow so selecting a zone shows a compact action panel. Users can view a formatted Zone Operational Brief directly in the dashboard, optionally download it as a PDF, or open copy-ready text. PDF export uses ReportLab and the dashboard handles missing dependencies gracefully.
+
+## Week 6 Part 2: RAG Corpus and TF-IDF Baseline
+
+Added the first retrieval layer in `rag/`. ReliefWeb and GDACS records from PostgreSQL are exported to a local corpus, split into searchable chunks, and indexed with a TF-IDF keyword retriever. This established the offline retrieval baseline before semantic search.
+
+## Week 6 Part 2: pgvector Semantic Retrieval
+
+Enabled pgvector in Docker Compose (`pgvector/pgvector:0.8.1-pg15`). Added embedding tables and a script to embed chunks locally with Ollama `nomic-embed-text` (768 dimensions). Semantic retrieval runs over PostgreSQL vector storage.
+
+## Week 6 Part 2: Hybrid Retrieval and RAG API
+
+Combined semantic similarity, TF-IDF keyword scoring, and metadata boosting (country, event type, source) into a hybrid retriever. Country-specific results are preferred; fallback results are labeled when country-specific coverage is thin. Exposed zone-level retrieved context via `GET /reports/rag-zone-context/{zone_id}` and integrated it into the Operational Map dashboard.
+
+## Week 6 Part 2: Local LLM-Assisted Briefings
+
+Added optional AI-assisted operational brief generation using Ollama `llama3.2`. The prompt grounds output in structured zone metrics and retrieved ReliefWeb/GDACS context, with the related disaster alert as the primary event and retrieved sources as supporting context only. The dashboard labels output as an AI-assisted draft requiring review. Template-based briefs remain the stable default.
