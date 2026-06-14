@@ -101,6 +101,13 @@ CHART_PAPER = COLOR_BG
 
 API_BASE_URL = DEFAULT_API_BASE
 
+DASHBOARD_REQUEST_TIMEOUT = 10
+AI_BRIEFING_REQUEST_TIMEOUT = 180
+
+BACKEND_UNAVAILABLE_MESSAGE = (
+    "Backend API is unavailable. Start FastAPI and refresh the dashboard."
+)
+
 
 def format_resource_name(value) -> str:
     """Return a stakeholder-friendly resource type label."""
@@ -889,12 +896,29 @@ def inject_styles() -> None:
 
 
 def fetch_json(endpoint: str, base_url: str, params: dict | None = None):
+    """Fetch JSON from the API; return None on any failure without raising."""
     url = f"{base_url.rstrip('/')}{endpoint}"
     try:
-        response = requests.get(url, params=params, timeout=15)
-        response.raise_for_status()
+        response = requests.get(url, params=params, timeout=DASHBOARD_REQUEST_TIMEOUT)
+        if response.status_code != 200:
+            return None
         return response.json()
-    except requests.RequestException:
+    except (requests.RequestException, ValueError, TypeError):
+        return None
+
+
+def get_ai_zone_briefing(base_url: str, zone_id: str) -> dict | None:
+    """Fetch AI-assisted briefing (longer timeout for local Ollama generation)."""
+    url = f"{base_url.rstrip('/')}/reports/ai-zone-briefing/{zone_id}"
+    try:
+        response = requests.get(url, timeout=AI_BRIEFING_REQUEST_TIMEOUT)
+        if response.status_code != 200:
+            return None
+        data = response.json()
+        if not isinstance(data, dict):
+            return None
+        return data
+    except (requests.RequestException, ValueError, TypeError):
         return None
 
 
@@ -932,17 +956,6 @@ def get_zone_briefing(base_url: str, zone_id: str) -> dict | None:
 
 def get_rag_zone_context(base_url: str, zone_id: str) -> dict | None:
     return fetch_json(f"/reports/rag-zone-context/{zone_id}", base_url)
-
-
-def get_ai_zone_briefing(base_url: str, zone_id: str) -> dict | None:
-    """Fetch AI-assisted briefing (longer timeout for local Ollama generation)."""
-    url = f"{base_url.rstrip('/')}/reports/ai-zone-briefing/{zone_id}"
-    try:
-        response = requests.get(url, timeout=200)
-        response.raise_for_status()
-        return response.json()
-    except requests.RequestException:
-        return None
 
 
 RAG_UNAVAILABLE_MESSAGE = (
@@ -1356,8 +1369,12 @@ def render_ai_assisted_briefing_section(base_url: str, zone_id: str) -> None:
         key=f"generate_ai_brief_{zone_id}",
         use_container_width=True,
     ):
-        with st.spinner("Generating AI-assisted brief locally with Ollama..."):
-            ai_data = get_ai_zone_briefing(base_url, zone_id)
+        ai_data = None
+        try:
+            with st.spinner("Generating AI-assisted brief locally with Ollama..."):
+                ai_data = get_ai_zone_briefing(base_url, zone_id)
+        except Exception:
+            ai_data = None
         st.session_state["ai_brief_zone_id"] = zone_id
         st.session_state["ai_brief_data"] = ai_data
         st.session_state["ai_brief_requested"] = True
@@ -1366,7 +1383,7 @@ def render_ai_assisted_briefing_section(base_url: str, zone_id: str) -> None:
         return
 
     ai_data = st.session_state.get("ai_brief_data")
-    if not ai_data:
+    if not ai_data or not isinstance(ai_data, dict):
         if st.session_state.get("ai_brief_requested"):
             st.warning(AI_BRIEF_UNAVAILABLE_MESSAGE)
         return
@@ -1786,10 +1803,15 @@ def get_api_base() -> str:
 
 
 def show_backend_warning() -> None:
-    st.warning(
-        "Dashboard data is currently unavailable. "
-        "Please ensure the local data service is running."
-    )
+    st.warning(BACKEND_UNAVAILABLE_MESSAGE)
+
+
+def _safe_render_tab(render_fn, base_url: str) -> None:
+    """Render a tab without surfacing tracebacks when backend data is unavailable."""
+    try:
+        render_fn(base_url)
+    except Exception:
+        show_backend_warning()
 
 
 def apply_chart_layout(fig, title: str, height: int = 440, x_title: str = "", y_title: str = ""):
@@ -2336,6 +2358,10 @@ def render_map_tab(base_url: str) -> None:
             show_backend_warning()
         return
 
+    if not isinstance(briefing, dict) or not briefing.get("zone"):
+        show_backend_warning()
+        return
+
     render_selected_zone_panel(briefing)
 
     if not st.session_state.get("show_zone_brief"):
@@ -2362,16 +2388,19 @@ def main() -> None:
     ])
 
     with tabs[0]:
-        render_overview_tab(api_base)
+        _safe_render_tab(render_overview_tab, api_base)
     with tabs[1]:
-        render_critical_tab(api_base)
+        _safe_render_tab(render_critical_tab, api_base)
     with tabs[2]:
-        render_surplus_tab(api_base)
+        _safe_render_tab(render_surplus_tab, api_base)
     with tabs[3]:
-        render_summary_tab(api_base)
+        _safe_render_tab(render_summary_tab, api_base)
     with tabs[4]:
-        render_map_tab(api_base)
+        _safe_render_tab(render_map_tab, api_base)
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception:
+        st.warning(BACKEND_UNAVAILABLE_MESSAGE)

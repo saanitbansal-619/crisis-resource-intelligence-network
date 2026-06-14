@@ -98,3 +98,17 @@ Combined semantic similarity, TF-IDF keyword scoring, and metadata boosting (cou
 ## Week 6 Part 2: Local LLM-Assisted Briefings
 
 Added optional AI-assisted operational brief generation using Ollama `llama3.2`. The prompt grounds output in structured zone metrics and retrieved ReliefWeb/GDACS context, with the related disaster alert as the primary event and retrieved sources as supporting context only. The dashboard labels output as an AI-assisted draft requiring review. Template-based briefs remain the stable default.
+
+## Week 6 Part 2: Demo Reliability and Health Check
+
+Added graceful dashboard error handling when FastAPI, PostgreSQL, or Ollama is unavailable. API calls use short timeouts and show clean user-facing warnings instead of tracebacks. Added `scripts/health_check.py` to verify PostgreSQL, FastAPI, hybrid RAG retrieval, and optional Ollama AI briefing before demos.
+
+## Final Status
+
+- Full dashboard workflow is complete
+- Hybrid RAG retrieval is complete
+- Local LLM briefing generation is complete
+- Dashboard error handling was added for demo reliability
+- Screenshots and demo recording are the remaining presentation tasks
+
+Limitations remain: simulated operational inventory/request data, draft AI briefings, and public crisis context limited to ReliefWeb/GDACS coverage. This is a portfolio prototype, not a production deployment.

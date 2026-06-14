@@ -37,6 +37,16 @@ The project demonstrates end-to-end skills across:
 
 It is structured as a portfolio system that shows I can move from raw external data to a usable operational interface.
 
+### Final system status
+
+- Full dashboard workflow is complete
+- Hybrid RAG retrieval is complete
+- Local LLM briefing generation is complete
+- Dashboard error handling was added for demo reliability
+- Screenshots and demo recording are the remaining presentation tasks
+
+This remains a portfolio prototype, not a production deployment.
+
 ---
 
 ## 4. System Architecture Explanation
@@ -316,8 +326,46 @@ python -m rag.hybrid_retriever "Philippines earthquake water food medical needs"
 
 ---
 
+## Demo Health Check
+
+Before a dashboard demo or interview walkthrough, run:
+
+```bash
+python -m scripts.health_check
+```
+
+Expected output when everything is running:
+
+```
+[OK] Database connection
+[OK] FastAPI backend
+[OK] RAG context endpoint
+[OK] AI briefing endpoint
+```
+
+What each check verifies:
+
+| Check | Verifies |
+|-------|----------|
+| Database connection | PostgreSQL connection using `DATABASE_URL` |
+| FastAPI backend | API availability at `http://127.0.0.1:8001/` |
+| RAG context endpoint | Hybrid RAG retrieval for `ZONE001` |
+| AI briefing endpoint | Ollama-powered draft briefing generation |
+
+The AI briefing endpoint depends on **Ollama running locally** with **`llama3.2` available**. If Ollama is not running, the script prints a warning and the demo can still proceed with template briefs and retrieved context.
+
+**Limitations to mention during demos:**
+
+- Operational inventory and request data are simulated prototype data
+- AI briefings are drafts requiring human review
+- Public crisis context depends on available ReliefWeb/GDACS records
+- The system does not make final operational decisions
+
+---
+
 ## Quick Demo Flow (2–3 minutes)
 
+0. Run `python -m scripts.health_check` and confirm required checks pass.
 1. Show **Situation Overview** KPIs and explain data sources.
 2. Open **Priority Needs** — point out highest mismatch scores.
 3. Open **Operational Map** — select a zone, view **Selected Zone** panel.

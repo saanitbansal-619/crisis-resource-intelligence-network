@@ -64,6 +64,16 @@ ReliefWeb/GDACS crisis records
 
 **Week 6 Part 2 complete:** RAG retrieval over ReliefWeb/GDACS records with pgvector semantic search, hybrid keyword scoring, metadata boosting, fallback labeling, and optional local LLM-assisted operational briefings via Ollama.
 
+**Final system status (portfolio prototype):**
+
+- Full dashboard workflow is complete
+- Hybrid RAG retrieval is complete
+- Local LLM briefing generation is complete
+- Dashboard error handling was added for demo reliability
+- Screenshots and demo recording are the remaining presentation tasks
+
+This is not production-ready. Operational inventory and request data are simulated, AI briefings are drafts, and public crisis context depends on available ReliefWeb/GDACS records.
+
 ### Working features
 
 - ReliefWeb API ingestion with approved appname support (loaded from `.env`)
@@ -78,11 +88,54 @@ ReliefWeb/GDACS crisis records
 - RAG corpus building, chunking, embedding, and hybrid retrieval
 - Zone-level retrieved crisis context and optional AI-assisted briefing endpoints
 - Operational Map with template briefs, retrieved context, and on-demand AI draft generation
+- Graceful dashboard error handling when FastAPI, PostgreSQL, or Ollama is unavailable
+- Demo health check script (`python -m scripts.health_check`)
 
 ### Next steps
 
 - Add ML shortage-risk prediction
 - Scheduled ingestion and cloud deployment
+- Refresh dashboard screenshots and record a demo walkthrough
+
+## Demo Health Check
+
+Before running the dashboard demo, verify local services:
+
+```bash
+python -m scripts.health_check
+```
+
+Expected output when all services are available:
+
+```
+[OK] Database connection
+[OK] FastAPI backend
+[OK] RAG context endpoint
+[OK] AI briefing endpoint
+```
+
+If Ollama is not running, the AI check may show a warning instead:
+
+```
+[WARN] AI briefing endpoint: Ollama may not be running
+```
+
+| Check | Verifies |
+|-------|----------|
+| Database connection | PostgreSQL is reachable using `DATABASE_URL` from `.env` |
+| FastAPI backend | API is running at `http://127.0.0.1:8001/` |
+| RAG context endpoint | Hybrid RAG retrieval works for `ZONE001` via `/reports/rag-zone-context/ZONE001` |
+| AI briefing endpoint | Ollama-powered draft briefing works via `/reports/ai-zone-briefing/ZONE001` |
+
+The AI briefing endpoint depends on **Ollama running locally** with **`llama3.2` available**. The dashboard still works without it; template briefs and retrieved context remain available when only PostgreSQL and FastAPI are running.
+
+Start services before the health check:
+
+```bash
+docker compose up -d
+uvicorn backend.main:app --reload --port 8001
+ollama serve   # if testing AI briefing
+```
 
 ## Data Sources
 
@@ -230,6 +283,8 @@ Examples:
 
 The Streamlit dashboard consumes the FastAPI backend and presents crisis resource intelligence in a professional humanitarian operations style. It includes situation overview KPIs, priority needs, available surplus, resource balance, and an operational map.
 
+Before a demo, run `python -m scripts.health_check` to confirm PostgreSQL, FastAPI, RAG, and (optionally) Ollama are available.
+
 Run in two terminals:
 
 Terminal 1 — API:
@@ -327,6 +382,7 @@ CrisisResourceIntel/
 ├── analytics/       # Mismatch engine and SQL queries
 ├── backend/         # FastAPI application
 ├── dashboard/       # Streamlit UI
+├── scripts/         # Demo health check and utilities
 ├── ml/              # Shortage-risk prediction (future)
 ├── rag/             # Corpus, embeddings, hybrid retrieval, LLM briefing
 ├── data/            # Raw, processed, and sample data
