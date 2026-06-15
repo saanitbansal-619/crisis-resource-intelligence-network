@@ -108,6 +108,13 @@ AI_BRIEFING_REQUEST_TIMEOUT = 180
 BACKEND_UNAVAILABLE_MESSAGE = (
     "Backend API is unavailable. Start FastAPI and refresh the dashboard."
 )
+SITUATION_REPORT_UNAVAILABLE_MESSAGE = (
+    "Situation report is unavailable. Make sure the FastAPI backend is running."
+)
+SITUATION_REPORT_NOTE = (
+    "System-generated operational summary based on mismatch scores, simulated resource "
+    "data, and transfer recommendation logic."
+)
 
 
 def format_resource_name(value) -> str:
@@ -908,6 +915,18 @@ def inject_styles() -> None:
             color: {COLOR_MUTED};
             margin-bottom: 0.75rem;
         }}
+        .situation-report-header {{
+            margin: 0.45rem 0 0.75rem 0;
+        }}
+        .situation-report-header .zone-brief-section-title {{
+            margin-bottom: 0.2rem;
+        }}
+        .situation-report-meta {{
+            font-size: 0.78rem;
+            color: {COLOR_MUTED};
+            line-height: 1.45;
+            margin: 0;
+        }}
         .ai-brief-output-wrap {{
             background: {COLOR_CARD};
             border: 1px solid {COLOR_BORDER};
@@ -992,6 +1011,10 @@ def get_rag_zone_context(base_url: str, zone_id: str) -> dict | None:
 
 def get_reallocation_recommendations(base_url: str) -> dict | None:
     return fetch_json("/mismatches/reallocation-recommendations", base_url)
+
+
+def get_situation_report(base_url: str) -> dict | None:
+    return fetch_json("/reports/situation-report", base_url)
 
 
 RAG_UNAVAILABLE_MESSAGE = (
@@ -2187,6 +2210,226 @@ def build_operational_map_figure(df: pd.DataFrame) -> go.Figure:
     return fig
 
 
+def _init_situation_report_state() -> None:
+    if "situation_report_data" not in st.session_state:
+        st.session_state["situation_report_data"] = None
+    if "situation_report_generated_at" not in st.session_state:
+        st.session_state["situation_report_generated_at"] = None
+    if "situation_report_requested" not in st.session_state:
+        st.session_state["situation_report_requested"] = False
+
+
+def _situation_report_priority_zones_df(zones: list[dict]) -> pd.DataFrame:
+    rows = []
+    for zone in zones:
+        resources = zone.get("key_shortage_resources") or []
+        rows.append(
+            {
+                "zone_name": zone.get("zone_name") or "—",
+                "country": zone.get("country") or "—",
+                "highest_priority_score": zone.get("highest_priority_score"),
+                "largest_shortage_gap": zone.get("largest_shortage_gap"),
+                "most_urgent_level": zone.get("most_urgent_level") or "—",
+                "key_shortage_resources": ", ".join(
+                    format_resource_label(resource) for resource in resources
+                )
+                or "—",
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def _situation_report_critical_shortages_df(shortages: list[dict]) -> pd.DataFrame:
+    rows = []
+    for item in shortages:
+        rows.append(
+            {
+                "zone_name": item.get("zone_name") or "—",
+                "country": item.get("country") or "—",
+                "resource_type": format_resource_label(item.get("resource_type")),
+                "total_available": item.get("total_available"),
+                "total_needed": item.get("total_needed"),
+                "shortage_gap": item.get("shortage_gap"),
+                "urgency_level": item.get("urgency_level") or "—",
+                "mismatch_score": item.get("mismatch_score"),
+                "status": format_status_label(item.get("status")),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def _situation_report_transfers_df(transfers: list[dict]) -> pd.DataFrame:
+    rows = []
+    for item in transfers:
+        rows.append(
+            {
+                "resource_type": format_resource_label(item.get("resource_type")),
+                "from_zone_name": item.get("from_zone_name") or "—",
+                "to_zone_name": item.get("to_zone_name") or "—",
+                "recommended_quantity": item.get("recommended_quantity"),
+                "confidence_level": _format_confidence_level(item.get("confidence_level")),
+                "match_type": _format_match_type(item.get("match_type")),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def render_situation_report_section(base_url: str) -> None:
+    """Render the on-demand overall situation report for the Situation Overview tab."""
+    st.markdown('<div class="subsection-header">Overall Situation Report</div>', unsafe_allow_html=True)
+    st.markdown(
+        f'<div class="ops-note">{html.escape(SITUATION_REPORT_NOTE)}</div>',
+        unsafe_allow_html=True,
+    )
+
+    if st.button("Generate Situation Report", key="generate_situation_report", use_container_width=False):
+        report_data = None
+        try:
+            with st.spinner("Generating situation report..."):
+                report_data = get_situation_report(base_url)
+        except Exception:
+            report_data = None
+        st.session_state["situation_report_requested"] = True
+        st.session_state["situation_report_data"] = report_data
+        st.session_state["situation_report_generated_at"] = (
+            report_data.get("generated_at") if isinstance(report_data, dict) else None
+        )
+
+    if not st.session_state.get("situation_report_requested"):
+        return
+
+    report_data = st.session_state.get("situation_report_data")
+    if not report_data or not isinstance(report_data, dict):
+        st.warning(SITUATION_REPORT_UNAVAILABLE_MESSAGE)
+        return
+
+    summary = report_data.get("summary") or {}
+    generated_at = (
+        st.session_state.get("situation_report_generated_at")
+        or report_data.get("generated_at")
+    )
+    report_title = report_data.get("report_title") or "Overall Situation Report"
+    transfer_count = summary.get("recommended_transfer_count")
+    meta_line = f"Generated: {format_datetime(generated_at)}"
+    if transfer_count is not None:
+        meta_line += f" · Recommended transfers identified: {format_number(transfer_count)}"
+
+    st.markdown(
+        f"""
+        <div class="situation-report-header">
+            <div class="zone-brief-section-title">{html.escape(report_title)}</div>
+            <p class="situation-report-meta">{html.escape(meta_line)}</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    interpretation = (report_data.get("operational_interpretation") or "").strip()
+    if interpretation:
+        st.markdown(
+            f"""
+            <div class="zone-brief-card">
+                <div class="zone-brief-section-title">Operational Interpretation</div>
+                <p class="zone-brief-paragraph">{html.escape(interpretation)}</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    priority_zones = report_data.get("top_priority_zones") or []
+    if priority_zones:
+        st.markdown('<div class="subsection-header">Top Priority Zones</div>', unsafe_allow_html=True)
+        priority_df = _situation_report_priority_zones_df(priority_zones)
+        st.dataframe(
+            rename_display_columns(
+                priority_df,
+                extra_labels={
+                    "highest_priority_score": "Highest Priority Score",
+                    "largest_shortage_gap": "Largest Shortage Gap",
+                    "most_urgent_level": "Most Urgent Level",
+                    "key_shortage_resources": "Key Shortage Resources",
+                },
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    critical_shortages = report_data.get("critical_shortages") or []
+    if critical_shortages:
+        st.markdown('<div class="subsection-header">Critical Shortages</div>', unsafe_allow_html=True)
+        shortages_df = _situation_report_critical_shortages_df(critical_shortages)
+        st.dataframe(
+            rename_display_columns(
+                shortages_df,
+                extra_labels={
+                    "mismatch_score": "Score",
+                    "status": "Status",
+                },
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    recommended_transfers = report_data.get("recommended_transfers") or []
+    if recommended_transfers:
+        st.markdown(
+            '<div class="subsection-header">Recommended Transfers</div>',
+            unsafe_allow_html=True,
+        )
+        transfers_df = _situation_report_transfers_df(recommended_transfers)
+        st.dataframe(
+            rename_display_columns(
+                transfers_df,
+                extra_labels={
+                    "from_zone_name": "From",
+                    "to_zone_name": "To",
+                    "recommended_quantity": "Qty",
+                    "confidence_level": "Confidence",
+                    "match_type": "Match Type",
+                },
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    recommended_actions = report_data.get("recommended_actions") or []
+    if recommended_actions:
+        actions_html = "".join(
+            f"<li>{html.escape(action)}</li>" for action in recommended_actions
+        )
+        st.markdown(
+            f"""
+            <div class="zone-brief-card">
+                <div class="zone-brief-section-title">Recommended Actions</div>
+                <ul class="zone-brief-list">{actions_html}</ul>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    limitations = report_data.get("limitations") or []
+    method_note = (report_data.get("method_note") or "").strip()
+    if limitations or method_note:
+        limitations_html = "".join(
+            f"<li>{html.escape(item)}</li>" for item in limitations
+        )
+        method_html = (
+            f'<p class="zone-brief-transparency">{html.escape(method_note)}</p>'
+            if method_note
+            else ""
+        )
+        st.markdown(
+            f"""
+            <div class="zone-brief-card">
+                <div class="zone-brief-section-title">Limitations</div>
+                <ul class="zone-brief-list">{limitations_html}</ul>
+                {method_html}
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+
 def render_overview_tab(base_url: str) -> None:
     st.markdown('<div class="section-header">Situation Overview</div>', unsafe_allow_html=True)
 
@@ -2225,6 +2468,8 @@ def render_overview_tab(base_url: str) -> None:
             render_metric_card("Humanitarian Reports", overview.get("total_crisis_reports"), "neutral")
         with row2[3]:
             render_metric_card("Resource Gaps Tracked", overview.get("total_mismatch_records"), "primary")
+
+    render_situation_report_section(base_url)
 
     render_how_it_works_section()
     render_priority_score_section()
@@ -2694,6 +2939,7 @@ def render_map_tab(base_url: str) -> None:
 
 def main() -> None:
     inject_styles()
+    _init_situation_report_state()
     api_base = get_api_base()
     render_hero_header()
 
