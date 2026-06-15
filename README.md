@@ -91,7 +91,7 @@ ReliefWeb/GDACS crisis records
 - Resource reallocation recommendations are complete
 - Overall Situation Report (deterministic) is complete
 - Dashboard error handling was added for demo reliability
-- Screenshots and demo recording are the remaining presentation tasks
+- Dashboard screenshots are complete; demo recording is the remaining presentation task
 
 This is not production-ready. Operational inventory and request data are simulated, transfer recommendations require field validation, AI briefings are drafts, and public crisis context depends on available ReliefWeb/GDACS records.
 
@@ -118,7 +118,7 @@ This is not production-ready. Operational inventory and request data are simulat
 
 - Add ML shortage-risk prediction
 - Scheduled ingestion and cloud deployment
-- Refresh dashboard screenshots and record a demo walkthrough
+- Record a demo walkthrough
 
 ## Demo Health Check
 
@@ -433,12 +433,45 @@ This is a **portfolio prototype**, not a production emergency response system:
 
 ## Dashboard Screenshots
 
-![Situation Overview](docs/screenshots/situation_overview.png)
-![Priority Needs](docs/screenshots/priority_needs.png)
-![Available Surplus](docs/screenshots/available_surplus.png)
-![Resource Balance](docs/screenshots/resource_balance.png)
-![Operational Map](docs/screenshots/operational_map.png)
-![Zone Operational Brief](docs/screenshots/zone_operational_brief.png)
+1. **Situation Overview — Operational Snapshot** — KPI cards for zones, shortages, surplus, and tracked gaps.
+
+   ![Situation Overview Snapshot](docs/screenshots/situation_overview_snapshot.png)
+
+2. **Situation Overview — Overall Situation Report** — On-demand deterministic report with interpretation, priority zones, and transfers.
+
+   ![Situation Overview Report](docs/screenshots/situation_overview_report.png)
+
+3. **Priority Needs** — Critical shortages ranked by mismatch score and urgency.
+
+   ![Priority Needs](docs/screenshots/priority_needs.png)
+
+4. **Available Surplus** — Surplus zones and resources that may support redistribution.
+
+   ![Available Surplus](docs/screenshots/available_surplus.png)
+
+5. **Resource Balance** — Net supply-demand gaps by resource type.
+
+   ![Resource Balance](docs/screenshots/resource_balance.png)
+
+6. **Operational Map** — Zone markers colored by mismatch status with zone selection.
+
+   ![Operational Map](docs/screenshots/operational_map.png)
+
+7. **Resource Transfer Recommendations** — Same-country and fallback transfer candidates for the selected zone.
+
+   ![Transfer Recommendations](docs/screenshots/transfer_recommendations.png)
+
+8. **Zone Operational Brief** — Template-based operational briefing for a selected crisis zone.
+
+   ![Zone Operational Brief](docs/screenshots/zone_operational_brief.png)
+
+9. **Retrieved Crisis Context** — Hybrid RAG results from ReliefWeb/GDACS records with fallback labeling.
+
+   ![RAG Context Expanded](docs/screenshots/rag_context_expanded.png)
+
+10. **AI-Assisted Briefing** — Optional local Ollama draft labeled for coordinator review.
+
+    ![AI Assisted Briefing](docs/screenshots/ai_assisted_briefing.png)
 
 ## Project Structure
 
