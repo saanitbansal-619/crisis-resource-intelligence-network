@@ -5,7 +5,8 @@
 ## Overview
 
 The platform ingests public humanitarian crisis data, stores and normalizes it in
-PostgreSQL, computes supply-demand mismatches, exposes results via FastAPI, and
+PostgreSQL, computes supply-demand mismatches, generates deterministic transfer
+recommendations and an overall situation report, exposes results via FastAPI, and
 visualizes insights in Streamlit. A retrieval-augmented briefing layer adds
 ReliefWeb/GDACS context retrieval and optional local LLM draft generation via
 Ollama. Future phases may add ML shortage-risk prediction.
@@ -16,10 +17,24 @@ Ollama. Future phases may add ML shortage-risk prediction.
 ReliefWeb API ──┐
                 ├──> Ingestion ──> Raw Storage ──> Cleaning ──> PostgreSQL
 GDACS RSS    ───┘                                              │
-                                                               ├──> Mismatch Analytics
+                                                               ├──> Mismatch scoring
+                                                               ├──> Transfer recommendation engine
                                                                ├──> FastAPI
-                                                               ├──> Streamlit Dashboard
-                                                               └──> RAG + Local LLM Briefing
+                                                               ├──> Hybrid RAG + optional Ollama LLM
+                                                               └──> Streamlit dashboard
+                                                                    (situation report + operational map)
+```
+
+End-to-end pipeline:
+
+```
+ReliefWeb/GDACS ingestion
+  → PostgreSQL storage
+  → mismatch scoring
+  → transfer recommendation engine
+  → hybrid RAG retrieval with pgvector
+  → optional local Ollama AI briefing
+  → dashboard situation report and operational map
 ```
 
 ## RAG Pipeline
@@ -63,23 +78,68 @@ AI-assisted operational briefings are generated locally using Ollama `llama3.2`.
 The AI endpoint (`GET /reports/ai-zone-briefing/{zone_id}`) is optional and
 on-demand. It does not replace template briefs, PDF export, or copy actions.
 
+## Transfer Recommendation Engine
+
+`analytics/reallocation_engine.py` matches shortage zones to surplus zones by
+resource type using mismatch score outputs.
+
+| Behavior | Detail |
+|----------|--------|
+| Input | Mismatch rows with shortage and surplus status labels |
+| Prioritization | Same-country transfer candidates first |
+| Fallback | Cross-country candidates labeled lower-confidence |
+| Output fields | Quantity, from/to zones, confidence, match type, feasibility note |
+| Validation | Recommendations require field coordinator review |
+
+**API:** `GET /mismatches/reallocation-recommendations`
+
+Recommendations are generated from simulated inventory and request data. They
+support coordination planning but are not dispatch orders.
+
+## Overall Situation Report
+
+`GET /reports/situation-report` returns a deterministic, template-based report
+across all zones. It is **not LLM-generated**.
+
+The report combines:
+
+- mismatch scores and resource gaps
+- surplus summaries
+- transfer recommendation logic
+- template-generated operational interpretation, recommended actions, and limitations
+
+The Streamlit **Situation Overview** tab fetches this report on demand via
+**Generate Situation Report**. Operational Snapshot KPIs remain the primary
+dashboard metrics; the report section focuses on interpretation and detail.
+
 ## API Layers
 
 | Layer | Role |
 |-------|------|
 | `/crises` | ReliefWeb reports and GDACS alerts |
 | `/resources` | Zones, organizations, inventory, requests |
-| `/mismatches` | Shortage/surplus analytics |
+| `/mismatches` | Shortage/surplus analytics and reallocation recommendations |
+| `/reports/overview` | System KPIs |
+| `/reports/situation-report` | Deterministic overall situation report |
 | `/reports/zone-briefing/{zone_id}` | Template operational brief (structured JSON) |
 | `/reports/rag-zone-context/{zone_id}` | Hybrid-retrieved ReliefWeb/GDACS context |
 | `/reports/ai-zone-briefing/{zone_id}` | Local LLM-assisted draft briefing |
 
-## Dashboard (Operational Map)
+## Dashboard
+
+### Situation Overview
+
+- Operational Snapshot KPI cards
+- On-demand **Overall Situation Report** (template-based)
+- Workflow, data sources, and priority score explanation
+
+### Operational Map
 
 - Zone selection via map marker or dropdown
 - Template operational briefing (default, deterministic)
 - Retrieved crisis context (after viewing template brief)
 - Optional **Generate AI-Assisted Brief** button
+- **Recommended Resource Transfers** for selected destination zones
 - PDF download and copy brief actions
 - Data transparency note (public vs simulated sources)
 
@@ -101,8 +161,10 @@ on-demand. It does not replace template briefs, PDF export, or copy actions.
 
 - Operational inventory and resource request data are **simulated prototype data**
 - Public humanitarian records are limited to ReliefWeb and GDACS coverage
-- AI-generated briefings are **drafts** requiring human review
-- This is a **portfolio prototype**, not a production deployment
+- **Transfer recommendations must be validated by field coordinators** before dispatch
+- **Cross-country fallback transfers** require customs, logistics, and partner review
+- AI-assisted briefings are **drafts** requiring human review
+- This is a **portfolio prototype**, not a production emergency response system
 - The system does not make final operational decisions
 
 ## Status
@@ -110,3 +172,4 @@ on-demand. It does not replace template briefs, PDF export, or copy actions.
 - Week 1–5 — ingestion, PostgreSQL, mismatch analytics, FastAPI, Streamlit dashboard
 - Week 6 Part 1 — template zone operational briefs on Operational Map
 - Week 6 Part 2 — RAG corpus, pgvector embeddings, hybrid retrieval, local LLM briefings
+- Portfolio extensions — resource reallocation recommendations, Overall Situation Report

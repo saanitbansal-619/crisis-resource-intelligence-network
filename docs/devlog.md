@@ -103,12 +103,22 @@ Added optional AI-assisted operational brief generation using Ollama `llama3.2`.
 
 Added graceful dashboard error handling when FastAPI, PostgreSQL, or Ollama is unavailable. API calls use short timeouts and show clean user-facing warnings instead of tracebacks. Added `scripts/health_check.py` to verify PostgreSQL, FastAPI, hybrid RAG retrieval, and optional Ollama AI briefing before demos.
 
+## Resource Reallocation Recommendations
+
+Added `analytics/reallocation_engine.py` and `GET /mismatches/reallocation-recommendations`. The engine compares shortage zones against surplus zones by resource type, prioritizes same-country transfer candidates, and labels cross-country options as lower-confidence fallbacks. Each recommendation includes quantity, source/destination zones, confidence level, match type, and a feasibility note. The Operational Map dashboard shows prioritized transfers for the selected destination zone.
+
+## Overall Situation Report
+
+Added `GET /reports/situation-report` and an on-demand **Generate Situation Report** section in the Situation Overview tab. The report is deterministic and template-based—not LLM-generated. It summarizes top priority zones, critical shortages, recommended transfers, recommended actions, operational interpretation, and limitations using mismatch scores, resource gaps, surplus data, and transfer recommendation logic.
+
 ## Final Status
 
 - Full dashboard workflow is complete
 - Hybrid RAG retrieval is complete
 - Local LLM briefing generation is complete
+- Resource reallocation recommendations are complete
+- Overall Situation Report (deterministic) is complete
 - Dashboard error handling was added for demo reliability
 - Screenshots and demo recording are the remaining presentation tasks
 
-Limitations remain: simulated operational inventory/request data, draft AI briefings, and public crisis context limited to ReliefWeb/GDACS coverage. This is a portfolio prototype, not a production deployment.
+Limitations remain: simulated operational inventory/request data, transfer recommendations requiring field validation, cross-country fallback review requirements, draft AI briefings, and public crisis context limited to ReliefWeb/GDACS coverage. This is a portfolio prototype, not a production emergency response system.

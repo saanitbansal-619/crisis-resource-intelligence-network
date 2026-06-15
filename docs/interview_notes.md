@@ -6,7 +6,7 @@ Interview prep guide for explaining this project to recruiters, professors, and 
 
 ## 1. 30-Second Pitch
 
-I built a full-stack crisis resource intelligence platform that ingests public disaster alerts and humanitarian reports from GDACS and ReliefWeb, stores structured data in PostgreSQL, computes zone-level supply-demand mismatch scores using simulated NGO resource data, and presents priority needs through a FastAPI-backed Streamlit dashboard. The Operational Map includes template zone briefings, hybrid RAG retrieval over ReliefWeb/GDACS records with pgvector, and optional local LLM-assisted draft briefings via Ollama.
+I built a full-stack crisis resource intelligence platform that ingests public disaster alerts and humanitarian reports from GDACS and ReliefWeb, stores structured data in PostgreSQL, computes zone-level supply-demand mismatch scores using simulated NGO resource data, generates deterministic transfer recommendations and an overall situation report, and presents priority needs through a FastAPI-backed Streamlit dashboard. The Operational Map includes template zone briefings, hybrid RAG retrieval over ReliefWeb/GDACS records with pgvector, optional local LLM-assisted draft briefings via Ollama, and resource transfer recommendations.
 
 ---
 
@@ -42,10 +42,12 @@ It is structured as a portfolio system that shows I can move from raw external d
 - Full dashboard workflow is complete
 - Hybrid RAG retrieval is complete
 - Local LLM briefing generation is complete
+- Resource reallocation recommendations are complete
+- Overall Situation Report (deterministic) is complete
 - Dashboard error handling was added for demo reliability
 - Screenshots and demo recording are the remaining presentation tasks
 
-This remains a portfolio prototype, not a production deployment.
+This remains a portfolio prototype, not a production emergency response system.
 
 ---
 
@@ -54,14 +56,13 @@ This remains a portfolio prototype, not a production deployment.
 Pipeline:
 
 ```
-ReliefWeb API + GDACS RSS
-    → ingestion scripts
-    → processed CSVs
-    → PostgreSQL (+ pgvector for RAG chunks)
-    → mismatch scoring engine
-    → FastAPI backend
-    → Streamlit dashboard
-    → operational map, template briefs, RAG context, optional LLM drafts
+ReliefWeb/GDACS ingestion
+    → PostgreSQL storage
+    → mismatch scoring
+    → transfer recommendation engine
+    → hybrid RAG retrieval with pgvector
+    → optional local Ollama AI briefing
+    → dashboard situation report and operational map
 ```
 
 **RAG pipeline:**
@@ -146,12 +147,14 @@ FastAPI exposes analytics and database outputs through REST endpoints. This sepa
 |----------|---------|
 | `/health` | API and database connectivity check |
 | `/reports/overview` | System KPIs |
+| `/reports/situation-report` | Deterministic overall situation report (not LLM-generated) |
 | `/reports/resource-summary` | Resource-type mismatch summary |
 | `/reports/zone-briefing/{zone_id}` | Consolidated zone briefing JSON (template) |
 | `/reports/rag-zone-context/{zone_id}` | Hybrid-retrieved ReliefWeb/GDACS context |
 | `/reports/ai-zone-briefing/{zone_id}` | Optional local LLM-assisted draft briefing |
 | `/mismatches/critical` | Critical shortages |
 | `/mismatches/surplus` | Surplus resources |
+| `/mismatches/reallocation-recommendations` | Deterministic surplus-to-shortage transfer recommendations |
 | `/resources/zones` | Crisis response zones |
 | `/crises/alerts` | GDACS alerts |
 | `/crises/reports` | ReliefWeb reports |
@@ -166,11 +169,11 @@ The Streamlit dashboard is designed for humanitarian stakeholders, not developer
 
 **Tabs:**
 
-- **Situation Overview** — KPIs, workflow explanation, data sources
+- **Situation Overview** — KPIs, workflow explanation, data sources, on-demand Overall Situation Report
 - **Priority Needs** — critical shortages, tables, charts
 - **Available Surplus** — surplus zones and redistribution candidates
 - **Resource Balance** — net gaps by resource type
-- **Operational Map** — zone markers by mismatch status, zone selection, operational briefings
+- **Operational Map** — zone markers by mismatch status, zone selection, operational briefings, transfer recommendations
 
 **Operational Map workflow:**
 
@@ -208,6 +211,49 @@ After viewing the template brief, the dashboard fetches hybrid-retrieved ReliefW
 ### Optional AI-assisted draft
 
 Users can optionally generate a local LLM draft via `GET /reports/ai-zone-briefing/{zone_id}` (Ollama `llama3.2`). The related disaster alert is the primary event; retrieved sources are supporting context only. The dashboard labels this output as an AI-assisted draft requiring review.
+
+---
+
+## 9a. Resource Reallocation Recommendations
+
+The transfer recommendation engine compares shortage zones against surplus zones by resource type using mismatch scores and simulated inventory/request data.
+
+**How to explain it in an interview:**
+
+> The system matches surplus capacity to shortage gaps deterministically. Same-country transfers are prioritized because they are more feasible. Cross-country options are included as lower-confidence fallbacks with explicit feasibility notes. Every recommendation includes quantity, source zone, destination zone, confidence level, match type, and a validation note—but coordinators still need to confirm transport, access, and partner availability before dispatch.
+
+**Key behaviors:**
+
+| Behavior | Detail |
+|----------|--------|
+| Matching logic | Shortage records matched to surplus by resource type |
+| Prioritization | Same-country candidates first; cross-country fallback when needed |
+| Confidence | Higher for same-country; lower for cross-country fallback |
+| Output fields | Quantity, from/to zones, confidence, match type, feasibility note |
+| Validation | Recommendations require field coordinator review before use |
+
+**API:** `GET /mismatches/reallocation-recommendations`
+
+The Operational Map dashboard shows prioritized transfers for the selected destination zone plus an expander for all recommendations.
+
+---
+
+## 9b. Overall Situation Report
+
+The **Overall Situation Report** is a deterministic, template-based portfolio report across all zones. It is **not LLM-generated**.
+
+**API:** `GET /reports/situation-report`
+
+It summarizes:
+
+- top priority zones (by mismatch score, shortage gap, urgency)
+- critical shortages
+- recommended transfers
+- recommended actions
+- operational interpretation (template-generated paragraph)
+- limitations and method note
+
+The dashboard **Situation Overview** tab includes a **Generate Situation Report** button. The report is fetched on demand only—not auto-generated on page load. Operational Snapshot KPI cards remain the main metrics area; the report section focuses on interpretation and operational detail.
 
 ---
 
@@ -266,8 +312,10 @@ python -m rag.hybrid_retriever "Philippines earthquake water food medical needs"
 
 - Operational inventory and resource request data are **simulated prototype data**
 - Public humanitarian records are limited to ReliefWeb and GDACS coverage
-- AI-generated briefings are **drafts** and should be reviewed before operational use
-- This is a **portfolio prototype**, not a real deployment
+- **Transfer recommendations must be validated by field coordinators** before dispatch
+- **Cross-country fallback transfers** require customs, logistics, and partner review
+- AI-assisted briefings are **drafts** and should be reviewed before operational use
+- This is a **portfolio prototype**, not a production emergency response system
 - Do not present the system as production-ready or imply real NGO inventory access
 - The AI does not make final operational decisions
 
@@ -324,6 +372,14 @@ python -m rag.hybrid_retriever "Philippines earthquake water food medical needs"
 
 **A:** Zones store a `crisis_event_id` that is matched to `gdacs_alerts.alert_id`, with normalization for ID format differences (e.g. `1544854.0` vs `1544854`).
 
+### Q: How do transfer recommendations work?
+
+**A:** The reallocation engine matches surplus zones to shortage zones by resource type using mismatch scores. Same-country candidates are prioritized with higher confidence. Cross-country fallbacks are labeled lower-confidence and include feasibility notes about customs, transport, and partner approval. All recommendations are deterministic and based on simulated data—they still require field validation.
+
+### Q: Is the Overall Situation Report AI-generated?
+
+**A:** No. It is a deterministic, template-based report built from mismatch scores, resource gaps, surplus records, and transfer recommendation logic. The dashboard fetches it on demand via `GET /reports/situation-report`. It complements—but does not replace—the optional zone-level AI-assisted brief on the Operational Map.
+
 ---
 
 ## Demo Health Check
@@ -357,9 +413,12 @@ The AI briefing endpoint depends on **Ollama running locally** with **`llama3.2`
 **Limitations to mention during demos:**
 
 - Operational inventory and request data are simulated prototype data
+- Transfer recommendations require field coordinator validation
+- Cross-country fallback transfers need customs/logistics/partner review
 - AI briefings are drafts requiring human review
 - Public crisis context depends on available ReliefWeb/GDACS records
 - The system does not make final operational decisions
+- This is a portfolio prototype, not a production emergency response system
 
 ---
 
@@ -367,13 +426,15 @@ The AI briefing endpoint depends on **Ollama running locally** with **`llama3.2`
 
 0. Run `python -m scripts.health_check` and confirm required checks pass.
 1. Show **Situation Overview** KPIs and explain data sources.
-2. Open **Priority Needs** — point out highest mismatch scores.
-3. Open **Operational Map** — select a zone, view **Selected Zone** panel.
-4. Click **View Operational Brief** — walk through priority gaps and related alert.
-5. Show **Retrieved Crisis Context** — explain hybrid RAG and fallback labeling.
-6. Optionally click **Generate AI-Assisted Brief** — note it is a local draft requiring review.
-7. Mention **Download PDF** / **Copy Brief** as export options for the template brief.
-8. Optionally open `/docs` on the FastAPI backend to show RAG and AI endpoints.
+2. Click **Generate Situation Report** — walk through interpretation, priority zones, shortages, transfers, and limitations.
+3. Open **Priority Needs** — point out highest mismatch scores.
+4. Open **Operational Map** — select a zone, view **Selected Zone** panel.
+5. Show **Recommended Resource Transfers** for the selected zone.
+6. Click **View Operational Brief** — walk through priority gaps and related alert.
+7. Show **Retrieved Crisis Context** — explain hybrid RAG and fallback labeling.
+8. Optionally click **Generate AI-Assisted Brief** — note it is a local draft requiring review.
+9. Mention **Download PDF** / **Copy Brief** as export options for the template brief.
+10. Optionally open `/docs` on the FastAPI backend to show situation report, reallocation, RAG, and AI endpoints.
 
 ---
 
