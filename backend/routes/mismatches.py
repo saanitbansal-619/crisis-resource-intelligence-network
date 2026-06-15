@@ -7,6 +7,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from backend.database import get_db, rows_to_dicts
+from analytics.reallocation_engine import generate_recommendations_from_mismatches
 
 router = APIRouter(prefix="/mismatches", tags=["mismatches"])
 
@@ -126,3 +127,17 @@ def get_surplus_mismatches(
         {"limit": limit},
     )
     return rows_to_dicts(result)
+
+
+@router.get("/reallocation-recommendations")
+def get_reallocation_recommendations(db: Session = Depends(get_db)) -> dict:
+    """Return deterministic surplus-to-shortage transfer recommendations."""
+    result = db.execute(
+        text(
+            _mismatch_base_query()
+            + """
+            ORDER BY m.mismatch_score DESC
+            """
+        )
+    )
+    return generate_recommendations_from_mismatches(rows_to_dicts(result))

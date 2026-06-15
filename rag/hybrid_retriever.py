@@ -5,7 +5,6 @@ Run: python -m rag.hybrid_retriever "Chad humanitarian food water displacement n
 """
 
 import sys
-from pathlib import Path
 
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity

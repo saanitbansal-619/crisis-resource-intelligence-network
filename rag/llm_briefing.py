@@ -70,6 +70,7 @@ def _model_is_available(model: str, available_models: set[str]) -> bool:
 
 
 def ensure_ollama_model(model: str = DEFAULT_MODEL) -> None:
+    """Verify the local Ollama server is reachable and the requested model is installed."""
     try:
         response = requests.get(OLLAMA_TAGS_URL, timeout=5)
         response.raise_for_status()
@@ -132,7 +133,7 @@ def _format_requests(requests_list: list) -> str:
 
 def _format_related_alert(related_alert: dict | None) -> str:
     if not related_alert:
-        return "None linked."
+        return "No directly linked primary GDACS alert is available for this zone."
 
     parts = [
         f"Title: {_truncate(related_alert.get('title'), 160)}",
@@ -191,25 +192,149 @@ def _format_retrieved_context(
     return "\n".join(lines)
 
 
-def _retrieved_context_prompt_rules(has_fallback_context: bool) -> str:
-    if has_fallback_context:
-        fallback_rule = (
-            "- Some retrieved sources are fallback context and should not be treated as direct evidence."
+def _format_source_types_label(retrieved_context: list) -> str:
+    labels: list[str] = []
+    for item in retrieved_context:
+        source_type = _clean(item.get("source_type")).lower()
+        if source_type == "gdacs" and "GDACS" not in labels:
+            labels.append("GDACS")
+        elif source_type == "reliefweb" and "ReliefWeb" not in labels:
+            labels.append("ReliefWeb")
+    if not labels:
+        return "ReliefWeb/GDACS"
+    return "/".join(labels)
+
+
+def _resolve_event_type(related_alert: dict | None, retrieved_context: list) -> str:
+    if related_alert and _clean(related_alert.get("event_type")):
+        return _clean(related_alert.get("event_type"))
+
+    country_specific_events = [
+        _clean(item.get("event_type"))
+        for item in retrieved_context
+        if not item.get("is_fallback") and _clean(item.get("event_type"))
+    ]
+    if country_specific_events:
+        return max(set(country_specific_events), key=country_specific_events.count)
+
+    fallback_events = [
+        _clean(item.get("event_type"))
+        for item in retrieved_context
+        if _clean(item.get("event_type"))
+    ]
+    if fallback_events:
+        return max(set(fallback_events), key=fallback_events.count)
+    return ""
+
+
+def build_retrieved_context_summary(
+    zone: dict,
+    related_alert: dict | None,
+    retrieved_context: list,
+    has_fallback_context: bool,
+    rag_unavailable: bool = False,
+) -> str:
+    """Build a zone-specific retrieved context summary for the LLM prompt."""
+    country = _clean(zone.get("country")) or "the selected zone"
+
+    if rag_unavailable:
+        return (
+            "Retrieved context is unavailable. Use structured zone metrics and the primary "
+            "alert rule below only."
+        )
+
+    if not retrieved_context:
+        if related_alert:
+            return (
+                f"No retrieved ReliefWeb/GDACS records were found for {country}. "
+                "Use the primary related alert as the main event."
+            )
+        return (
+            f"No retrieved ReliefWeb/GDACS records were found for {country}. "
+            "No directly linked primary GDACS alert is available for this zone."
+        )
+
+    source_label = _format_source_types_label(retrieved_context)
+    event_type = _resolve_event_type(related_alert, retrieved_context)
+    lines: list[str] = []
+
+    if related_alert:
+        alert_title = _truncate(related_alert.get("title"), 120)
+        alert_event = _clean(related_alert.get("event_type")) or "unspecified event type"
+        lines.append(
+            f"Primary related alert: {alert_title} ({alert_event})."
         )
     else:
-        fallback_rule = (
-            "- Retrieved sources are country-specific supporting context.\n"
-            "- Never say fallback sources are present."
+        lines.append("No directly linked primary GDACS alert is available for this zone.")
+
+    if event_type:
+        lines.append(
+            f"Country-specific {source_label} records include {country} {event_type} context "
+            "relevant to the selected zone."
         )
+    else:
+        lines.append(
+            f"Retrieved {source_label} context includes available {country} records relevant "
+            "to the selected zone."
+        )
+
+    lines.append(
+        "Retrieved context supports situational awareness but does not replace the primary alert."
+    )
+
+    if has_fallback_context:
+        lines.append(
+            "Some retrieved sources are fallback context and should not be treated as direct "
+            "evidence for the selected country."
+        )
+    else:
+        lines.append("Retrieved sources are country-specific supporting context.")
+
+    return " ".join(lines)
+
+
+def _retrieved_context_prompt_rules(retrieved_context_summary: str) -> str:
     return textwrap.dedent(
         f"""
         Retrieved Crisis Context section rules:
         - Use at most 3 short bullets in this section only.
         - Do not include long quoted source titles.
-        - Summarize in this style (adapt source type, country, and event to the data):
-        - Country-specific GDACS records show multiple Philippines earthquake alerts near the selected event.
+        - Use the provided retrieved_context_summary as the basis for this section.
+        - Retrieved context summary: {retrieved_context_summary}
+        - Do not mention another country or event type unless it appears in the selected zone or retrieved context.
+        - Do not reuse example wording from other zones.
+        - Do not say Philippines unless the selected country is Philippines or a retrieved source is explicitly from Philippines.
+        - Do not say earthquake unless the primary alert or retrieved context event type is earthquake.
         - Retrieved context supports situational awareness but does not replace the primary alert.
-        {fallback_rule}
+        """
+    ).strip()
+
+
+def _situation_prompt_rules(
+    related_alert: dict | None,
+    zone_name: str,
+    country: str,
+) -> str:
+    if related_alert:
+        return textwrap.dedent(
+            """
+            Situation section rules:
+            - Use the related alert title, event, severity, and description as the PRIMARY event.
+            - The selected related alert is the main event in Situation.
+            """
+        ).strip()
+
+    return textwrap.dedent(
+        f"""
+        Situation section rules:
+        - Include the selected zone name and country.
+        - Say only: "No directly linked primary GDACS alert is available for this zone."
+        - Do not infer that response efforts are absent.
+        - Do not infer that the situation is low priority just because no alert is linked.
+        - Do not say "lack of immediate disaster response efforts."
+        - Resource gaps still matter even if no primary alert is linked.
+        - State that current operational concern is based on resource gaps and retrieved context.
+        - Example style: "The {zone_name} in {country} has no directly linked primary GDACS alert. Current operational concern is based on identified resource gaps and retrieved ReliefWeb/GDACS context."
         """
     ).strip()
 
@@ -223,13 +348,30 @@ def build_ai_briefing_prompt(
     retrieved_context: list,
     rag_unavailable: bool = False,
 ) -> str:
+    """Build the grounded prompt for local Ollama operational briefing generation."""
     zone_name = _clean(zone.get("zone_name")) or "Unknown Zone"
     country = _clean(zone.get("country")) or "—"
     admin_region = _clean(zone.get("admin_region")) or "—"
     population = _clean(zone.get("population_estimate")) or "—"
     context_items = retrieved_context[:MAX_CONTEXT_CHUNKS]
     has_fallback_context = _has_fallback_context(context_items)
-    retrieved_context_rules = _retrieved_context_prompt_rules(has_fallback_context)
+    retrieved_context_summary = build_retrieved_context_summary(
+        zone=zone,
+        related_alert=related_alert,
+        retrieved_context=context_items,
+        has_fallback_context=has_fallback_context,
+        rag_unavailable=rag_unavailable,
+    )
+    retrieved_context_rules = _retrieved_context_prompt_rules(retrieved_context_summary)
+    situation_rules = _situation_prompt_rules(related_alert, zone_name, country)
+    primary_alert_rule = (
+        "The selected related alert is the PRIMARY event in Situation."
+        if related_alert
+        else (
+            "No directly linked primary GDACS alert is available for this zone. "
+            "Do not infer absent response efforts or low priority. Resource gaps still matter."
+        )
+    )
 
     return textwrap.dedent(
         f"""
@@ -249,11 +391,20 @@ def build_ai_briefing_prompt(
         - Complete all five sections. Finish the Limitations section fully.
 
         Grounding rules:
-        - The selected related alert is the PRIMARY event in Situation.
+        - {primary_alert_rule}
+        - If no related alert exists, say only that no directly linked primary GDACS alert is available for this zone.
+        - Do not infer that response efforts are absent.
+        - Do not infer that the situation is low priority just because no alert is linked.
+        - Do not say "lack of immediate disaster response efforts."
+        - Resource gaps still matter even if no primary alert is linked.
         - Retrieved context is supporting evidence only; do not replace the primary event.
+        - Use the provided retrieved_context_summary in Retrieved Crisis Context.
+        - Do not mention another country or event type unless it appears in the selected zone or retrieved context.
         - Preserve source dates exactly as provided (e.g. keep 08/06/2026 as 08/06/2026).
         - Use only the provided information. Do not invent facts.
         - Do not output raw metadata, JSON, or key=value fields.
+
+        {situation_rules}
 
         {retrieved_context_rules}
 
@@ -283,12 +434,16 @@ def build_ai_briefing_prompt(
 
         SUPPORTING RETRIEVED CONTEXT (supporting evidence only):
         {_format_retrieved_context(context_items, rag_unavailable, has_fallback_context)}
+
+        RETRIEVED CONTEXT SUMMARY (use this in Retrieved Crisis Context):
+        {retrieved_context_summary}
         Fallback context present: {str(has_fallback_context).lower()}
         """
     ).strip()
 
 
 def _call_ollama_generate(prompt: str, model: str = DEFAULT_MODEL) -> str:
+    """Call Ollama /api/generate and return the briefing text."""
     try:
         response = requests.post(
             OLLAMA_GENERATE_URL,

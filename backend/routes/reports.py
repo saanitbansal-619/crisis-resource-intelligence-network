@@ -100,6 +100,7 @@ def _preview_chunk_text(text_value: str, limit: int = 220) -> str:
 
 
 def _format_retrieved_context(retrieved_context: list[dict]) -> list[dict]:
+    """Shape hybrid retrieval results for API and dashboard consumers."""
     formatted: list[dict] = []
     for rank, item in enumerate(retrieved_context, start=1):
         final_score = item.get("final_score", item.get("relevance_score"))

@@ -1,5 +1,5 @@
 """
-Prepare retrieval-based RAG context for a zone briefing (no LLM yet).
+Prepare retrieval-based RAG context for zone briefings and AI-assisted drafts.
 """
 
 from rag.hybrid_retriever import hybrid_retrieve_context

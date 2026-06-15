@@ -9,6 +9,7 @@ Run: streamlit run dashboard/app.py
 
 import html
 import json
+import re
 from datetime import datetime
 from io import BytesIO
 
@@ -35,7 +36,7 @@ COLOR_SECONDARY = "#475467"
 COLOR_MUTED = "#667085"
 COLOR_PRIMARY = "#1F4E79"
 COLOR_CRITICAL = "#B42318"
-COLOR_SEVERE = "#B54708"
+COLOR_SEVERE = "#F59E0B"
 COLOR_SURPLUS = "#027A48"
 COLOR_BORDER = "#E5E7EB"
 COLOR_STABLE = "#94A3B8"
@@ -786,6 +787,33 @@ def inject_styles() -> None:
             margin: 0.35rem 0 0.45rem 0;
             font-style: italic;
         }}
+        .reallocation-same-country-note {{
+            font-size: 0.88rem;
+            color: {COLOR_SECONDARY};
+            line-height: 1.5;
+            margin: 0.35rem 0 0.65rem 0;
+        }}
+        .reallocation-fallback-banner {{
+            background: #FFF6ED;
+            border: 1px solid #F9DBAF;
+            border-radius: 8px;
+            color: #B54708;
+            font-size: 0.88rem;
+            font-weight: 600;
+            line-height: 1.5;
+            margin: 1rem 0 0.65rem 0;
+            padding: 0.7rem 0.9rem;
+        }}
+        .reallocation-fallback-card {{
+            border-color: #F9DBAF;
+            background: #FFFCF5;
+        }}
+        .reallocation-card-detail {{
+            font-size: 0.82rem;
+            color: {COLOR_MUTED};
+            line-height: 1.45;
+            margin: 0.45rem 0 0 0;
+        }}
         .rag-summary-card .rag-context-badge {{
             margin-bottom: 0.55rem;
         }}
@@ -857,16 +885,23 @@ def inject_styles() -> None:
             margin-top: 0.75rem;
         }}
         .ai-brief-draft-label {{
+            display: block;
             font-size: 0.95rem;
             font-weight: 700;
             color: {COLOR_PRIMARY};
-            margin-bottom: 0.35rem;
+            margin: 0.85rem 0 0.35rem 0;
         }}
         .ai-brief-note {{
+            display: block;
             font-size: 0.92rem;
             color: {COLOR_SECONDARY};
             line-height: 1.6;
-            margin: 0 0 0.85rem 0;
+            margin: 0;
+        }}
+        .ai-brief-draft-divider {{
+            border: none;
+            border-top: 1px solid {COLOR_BORDER};
+            margin: 0.85rem 0 0.35rem 0;
         }}
         .ai-brief-meta {{
             font-size: 0.78rem;
@@ -881,7 +916,8 @@ def inject_styles() -> None:
             margin-top: 0.75rem;
             box-shadow: 0 1px 3px rgba(16, 24, 40, 0.05);
         }}
-        .ai-brief-output-wrap .ai-brief-transparency {{
+        .ai-brief-output-wrap .ai-brief-transparency,
+        .ai-brief-transparency {{
             font-size: 0.86rem;
             color: {COLOR_MUTED};
             line-height: 1.55;
@@ -922,10 +958,6 @@ def get_ai_zone_briefing(base_url: str, zone_id: str) -> dict | None:
         return None
 
 
-def get_health(base_url: str) -> dict | None:
-    return fetch_json("/health", base_url)
-
-
 def get_overview(base_url: str) -> dict | None:
     return fetch_json("/reports/overview", base_url)
 
@@ -958,6 +990,10 @@ def get_rag_zone_context(base_url: str, zone_id: str) -> dict | None:
     return fetch_json(f"/reports/rag-zone-context/{zone_id}", base_url)
 
 
+def get_reallocation_recommendations(base_url: str) -> dict | None:
+    return fetch_json("/mismatches/reallocation-recommendations", base_url)
+
+
 RAG_UNAVAILABLE_MESSAGE = (
     "Retrieved crisis context is currently unavailable. "
     "Run the RAG corpus/chunk scripts and restart the API."
@@ -983,6 +1019,10 @@ DATA_TRANSPARENCY_NOTE = (
     "Public crisis alert and humanitarian report data come from GDACS and ReliefWeb. "
     "Operational inventory and request data are simulated for prototype purposes because "
     "real NGO inventory data is generally not public."
+)
+REALLOCATION_TRANSPARENCY_NOTE = (
+    "Transfer recommendations are generated from simulated resource inventory/request data "
+    "and should be validated by field coordinators before use."
 )
 
 RECOMMENDED_ACTIONS = [
@@ -1137,22 +1177,6 @@ def generate_zone_operational_brief_text(
         lines.append("")
     lines.extend(build_retrieved_crisis_context_text(rag_context))
     return "\n".join(lines).strip()
-
-
-def generate_situation_report(briefing: dict) -> str:
-    return generate_zone_operational_brief_text(briefing)
-
-
-def generate_priority_needs_brief(briefing: dict) -> str:
-    return generate_zone_operational_brief_text(briefing)
-
-
-def generate_reallocation_recommendation(briefing: dict) -> str:
-    return generate_zone_operational_brief_text(briefing)
-
-
-def generate_disaster_context_summary(briefing: dict) -> str:
-    return generate_zone_operational_brief_text(briefing)
 
 
 def generate_zone_operational_brief_html(briefing: dict) -> str:
@@ -1346,6 +1370,63 @@ def render_retrieved_crisis_context(rag_context: dict | None, zone_id: str = "")
         st.markdown('<div class="rag-expander-wrap"></div>', unsafe_allow_html=True)
 
 
+AI_BRIEF_MARKDOWN_HEADINGS = (
+    "### Situation",
+    "### Priority Resource Gaps",
+    "### Retrieved Crisis Context",
+    "### Recommended Actions",
+    "### Limitations",
+)
+
+AI_BRIEF_HEADING_NAMES = (
+    "Situation",
+    "Priority Resource Gaps",
+    "Retrieved Crisis Context",
+    "Recommended Actions",
+    "Limitations",
+)
+
+
+def normalize_ai_markdown(text: str) -> str:
+    """Normalize AI briefing markdown so bullets and headings render cleanly in Streamlit."""
+    if not text:
+        return ""
+
+    normalized = text.replace("\r\n", "\n").replace("\r", "\n").strip()
+
+    for name in AI_BRIEF_HEADING_NAMES:
+        normalized = re.sub(
+            rf"(?m)^(?!#+\s){re.escape(name)}\s*$",
+            f"### {name}",
+            normalized,
+        )
+
+    normalized = re.sub(r"([^\n])\s*(### )", r"\1\n\2", normalized)
+    normalized = re.sub(r"(\S)\n(### )", r"\1\n\n\2", normalized)
+
+    for heading in AI_BRIEF_MARKDOWN_HEADINGS:
+        normalized = re.sub(rf"({re.escape(heading)})\n(?!\n)", r"\1\n\n", normalized)
+
+    normalized = normalized.replace(". • ", ".\n• ")
+    normalized = normalized.replace(". \u2022 ", ".\n\u2022 ")
+    normalized = re.sub(r" +• ", "\n• ", normalized)
+    normalized = re.sub(r" +\u2022 ", "\n\u2022 ", normalized)
+
+    normalized = normalized.replace(". - ", ".\n- ")
+    normalized = re.sub(r"([^\n]) - ", r"\1\n- ", normalized)
+
+    normalized = re.sub(r"(?m)^•\s*", "- ", normalized)
+    normalized = re.sub(r"(?m)^\u2022\s*", "- ", normalized)
+    normalized = re.sub(r"\n•\s*", "\n- ", normalized)
+    normalized = re.sub(r"\n\u2022\s*", "\n- ", normalized)
+
+    normalized = re.sub(r" {2,}", " ", normalized)
+    normalized = re.sub(r"\n{3,}", "\n\n", normalized)
+    normalized = re.sub(r"[ \t]+\n", "\n", normalized)
+    normalized = re.sub(r"\n[ \t]+", "\n", normalized)
+    return normalized.strip()
+
+
 def _clear_ai_brief_state() -> None:
     st.session_state["ai_brief_zone_id"] = None
     st.session_state["ai_brief_data"] = None
@@ -1358,7 +1439,6 @@ def render_ai_assisted_briefing_section(base_url: str, zone_id: str) -> None:
         f"""
         <div class="zone-brief-card ai-brief-card">
             <div class="rag-context-title">AI-Assisted Briefing</div>
-            <p class="ai-brief-note">{html.escape(AI_BRIEF_NOTE)}</p>
         </div>
         """,
         unsafe_allow_html=True,
@@ -1395,6 +1475,8 @@ def render_ai_assisted_briefing_section(base_url: str, zone_id: str) -> None:
     st.markdown(
         f"""
         <div class="zone-brief-card ai-brief-draft-card">
+            <p class="ai-brief-note">{html.escape(AI_BRIEF_NOTE)}</p>
+            <hr class="ai-brief-draft-divider" />
             <div class="ai-brief-draft-label">AI-Assisted Draft</div>
             <p class="ai-brief-meta">Model: {html.escape(str(model))} · Local Ollama</p>
         </div>
@@ -1403,8 +1485,8 @@ def render_ai_assisted_briefing_section(base_url: str, zone_id: str) -> None:
     )
 
     if briefing_text:
-        st.markdown('<div class="ai-brief-output-wrap">', unsafe_allow_html=True)
-        st.markdown(briefing_text)
+        ai_text = normalize_ai_markdown(briefing_text)
+        st.markdown(ai_text)
         st.markdown(
             f'<p class="ai-brief-transparency">{html.escape(transparency_note)}</p>',
             unsafe_allow_html=True,
@@ -2250,6 +2332,166 @@ def render_summary_tab(base_url: str) -> None:
     render_content_card_end()
 
 
+def _format_match_type(value) -> str:
+    if value == "same_country":
+        return "Same Country"
+    if value == "cross_country_fallback":
+        return "Fallback / requires validation"
+    return str(value or "—").replace("_", " ").title()
+
+
+def _format_confidence_level(value) -> str:
+    if value == "high":
+        return "High"
+    if value == "low":
+        return "Low"
+    return str(value or "—").title()
+
+
+def _compact_reallocation_rows(recommendations: list[dict]) -> pd.DataFrame:
+    rows = []
+    for item in recommendations:
+        rows.append(
+            {
+                "resource_type": format_resource_label(item.get("resource_type")),
+                "from_zone_name": item.get("from_zone_name") or "—",
+                "to_zone_name": item.get("to_zone_name") or "—",
+                "recommended_quantity": item.get("recommended_quantity"),
+                "urgency_level": item.get("urgency_level") or "—",
+                "confidence_level": _format_confidence_level(item.get("confidence_level")),
+                "match_type": _format_match_type(item.get("match_type")),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def _render_compact_reallocation_table(recommendations: list[dict]) -> None:
+    if not recommendations:
+        return
+
+    table_df = _compact_reallocation_rows(recommendations)
+    render_content_card_start()
+    st.dataframe(
+        rename_display_columns(
+            table_df,
+            extra_labels={
+                "resource_type": "Resource",
+                "from_zone_name": "From Zone",
+                "to_zone_name": "To Zone",
+                "recommended_quantity": "Transfer Qty",
+                "urgency_level": "Urgency",
+                "confidence_level": "Confidence",
+                "match_type": "Match Type",
+            },
+        ),
+        use_container_width=True,
+        hide_index=True,
+    )
+    render_content_card_end()
+
+
+def _render_reallocation_card(item: dict) -> None:
+    compact_fields = [
+        ("Resource", format_resource_label(item.get("resource_type"))),
+        ("From", item.get("from_zone_name") or "—"),
+        ("To", item.get("to_zone_name") or "—"),
+        ("Qty", format_number(item.get("recommended_quantity"))),
+        ("Urgency", item.get("urgency_level") or "—"),
+        ("Confidence", _format_confidence_level(item.get("confidence_level"))),
+        ("Match", _format_match_type(item.get("match_type"))),
+    ]
+    fields_html = "".join(
+        f'<div class="zone-detail-item"><span class="zone-detail-label">{html.escape(label)}</span>'
+        f'<span class="zone-detail-value">{html.escape(str(value))}</span></div>'
+        for label, value in compact_fields
+    )
+    feasibility = (item.get("feasibility_note") or "").strip()
+    reason = (item.get("reason") or "").strip()
+    detail_parts = []
+    if feasibility:
+        detail_parts.append(f'<p class="reallocation-card-detail">{html.escape(feasibility)}</p>')
+    if reason:
+        detail_parts.append(f'<p class="reallocation-card-detail">{html.escape(reason)}</p>')
+    details_html = "".join(detail_parts)
+    card_class = "zone-details-card reallocation-fallback-card" if item.get("match_type") == "cross_country_fallback" else "zone-details-card"
+    st.markdown(
+        f"""
+        <div class="{card_class}" style="margin-bottom: 0.75rem;">
+            <div class="zone-details-grid">{fields_html}</div>
+            {details_html}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _render_selected_zone_reallocation_cards(recommendations: list[dict]) -> None:
+    for item in recommendations:
+        _render_reallocation_card(item)
+
+
+def render_reallocation_recommendations_section(
+    reallocation_data: dict | None,
+    selected_zone_id: str | None = None,
+) -> None:
+    """Render surplus-to-shortage transfer recommendations on the Operational Map."""
+    st.markdown(
+        '<div class="subsection-header" style="margin-top: 1.25rem;">'
+        "Recommended Resource Transfers</div>",
+        unsafe_allow_html=True,
+    )
+
+    if reallocation_data is None:
+        st.warning(BACKEND_UNAVAILABLE_MESSAGE)
+        return
+
+    recommendations = reallocation_data.get("recommendations") or []
+    if not recommendations:
+        st.info("No transfer recommendations are available for the current shortage and surplus records.")
+        st.markdown(
+            f'<p class="zone-brief-transparency">{html.escape(REALLOCATION_TRANSPARENCY_NOTE)}</p>',
+            unsafe_allow_html=True,
+        )
+        return
+
+    zone_recommendations: list[dict] = []
+    if selected_zone_id:
+        zone_recommendations = [
+            item for item in recommendations if item.get("to_zone_id") == selected_zone_id
+        ]
+        if zone_recommendations:
+            st.markdown(
+                '<div class="ops-note">Prioritized transfers for the selected destination zone.</div>',
+                unsafe_allow_html=True,
+            )
+            _render_selected_zone_reallocation_cards(zone_recommendations)
+        else:
+            st.info("No direct transfer recommendations were generated for this selected zone.")
+
+    has_fallback = any(
+        item.get("match_type") == "cross_country_fallback" for item in recommendations
+    )
+    expander_default = not selected_zone_id
+
+    with st.expander("View all transfer recommendations", expanded=expander_default):
+        if has_fallback:
+            st.markdown(
+                '<div class="reallocation-fallback-banner">'
+                "Fallback / requires validation — cross-country transfers are lower-confidence "
+                "and need additional coordination review before action.</div>",
+                unsafe_allow_html=True,
+            )
+        _render_compact_reallocation_table(recommendations)
+
+    method_note = (reallocation_data.get("method_note") or "").strip()
+    if method_note:
+        st.caption(method_note)
+    st.markdown(
+        f'<p class="zone-brief-transparency">{html.escape(REALLOCATION_TRANSPARENCY_NOTE)}</p>',
+        unsafe_allow_html=True,
+    )
+
+
 def _zone_id_from_map_selection(selection) -> str | None:
     """Extract zone_id from a Plotly point selection when available."""
     if not selection:
@@ -2347,16 +2589,14 @@ def render_map_tab(base_url: str) -> None:
         key="map_zone_selector",
     )
 
-    if selected_label:
-        selected_zone_id = zone_lookup[selected_label]
-        briefing = _load_zone_briefing(base_url, selected_zone_id)
-    else:
-        briefing = None
+    selected_zone_id = zone_lookup[selected_label] if selected_label else None
+    reallocation_data = get_reallocation_recommendations(base_url)
+    render_reallocation_recommendations_section(reallocation_data, selected_zone_id)
 
-    if briefing is None:
-        if selected_label:
-            show_backend_warning()
+    if not selected_label:
         return
+
+    briefing = _load_zone_briefing(base_url, selected_zone_id)
 
     if not isinstance(briefing, dict) or not briefing.get("zone"):
         show_backend_warning()
