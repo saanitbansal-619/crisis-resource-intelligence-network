@@ -1024,6 +1024,13 @@ REALLOCATION_TRANSPARENCY_NOTE = (
     "Transfer recommendations are generated from simulated resource inventory/request data "
     "and should be validated by field coordinators before use."
 )
+CROSS_COUNTRY_CARD_FEASIBILITY = (
+    "Customs, transport planning, partner approval, and field validation required before use."
+)
+CROSS_COUNTRY_EXPANDER_WARNING = (
+    "Cross-country fallback transfers are lower-confidence and require customs, transport "
+    "planning, partner approval, and field validation before action."
+)
 
 RECOMMENDED_ACTIONS = [
     "Prioritize resources with the highest mismatch scores.",
@@ -1386,6 +1393,66 @@ AI_BRIEF_HEADING_NAMES = (
     "Limitations",
 )
 
+AI_BRIEF_BULLET_SECTIONS = frozenset(
+    {
+        "Priority Resource Gaps",
+        "Retrieved Crisis Context",
+        "Recommended Actions",
+        "Limitations",
+    }
+)
+
+
+def _bulletize_ai_section_body(body: str) -> str:
+    """Turn plain lines under a briefing section into markdown list items."""
+    lines = body.splitlines()
+    output: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            if output and output[-1]:
+                output.append("")
+            continue
+        if stripped.startswith("- "):
+            output.append(stripped)
+        elif stripped.startswith("* "):
+            output.append("- " + stripped[2:].lstrip())
+        elif stripped[0] in "•\u2022" and (len(stripped) == 1 or stripped[1].isspace()):
+            output.append("- " + stripped[1:].lstrip())
+        elif re.match(r"^\d+\.\s", stripped):
+            output.append(stripped)
+        else:
+            output.append(f"- {stripped}")
+    while output and not output[-1]:
+        output.pop()
+    return "\n".join(output)
+
+
+def _apply_ai_section_bullets(text: str) -> str:
+    parts = re.split(r"(?m)^(### .+)$", text)
+    if len(parts) < 3:
+        return text
+
+    rebuilt: list[str] = []
+    preamble = parts[0].rstrip("\n")
+    if preamble:
+        rebuilt.append(preamble)
+
+    for idx in range(1, len(parts), 2):
+        heading = parts[idx]
+        body = parts[idx + 1] if idx + 1 < len(parts) else ""
+        section_name = re.sub(r"^#+\s*", "", heading).strip()
+        rebuilt.append(heading)
+        if section_name in AI_BRIEF_BULLET_SECTIONS:
+            bulletized = _bulletize_ai_section_body(body)
+            if bulletized:
+                rebuilt.append("")
+                rebuilt.append(bulletized)
+        elif body:
+            rebuilt.append(body.rstrip("\n"))
+
+    return "\n".join(rebuilt).strip()
+
 
 def normalize_ai_markdown(text: str) -> str:
     """Normalize AI briefing markdown so bullets and headings render cleanly in Streamlit."""
@@ -1420,6 +1487,9 @@ def normalize_ai_markdown(text: str) -> str:
     normalized = re.sub(r"\n•\s*", "\n- ", normalized)
     normalized = re.sub(r"\n\u2022\s*", "\n- ", normalized)
 
+    normalized = _apply_ai_section_bullets(normalized)
+
+    normalized = re.sub(r"(\S)\n(### )", r"\1\n\n\2", normalized)
     normalized = re.sub(r" {2,}", " ", normalized)
     normalized = re.sub(r"\n{3,}", "\n\n", normalized)
     normalized = re.sub(r"[ \t]+\n", "\n", normalized)
@@ -2334,9 +2404,9 @@ def render_summary_tab(base_url: str) -> None:
 
 def _format_match_type(value) -> str:
     if value == "same_country":
-        return "Same Country"
+        return "Same-country transfer"
     if value == "cross_country_fallback":
-        return "Fallback / requires validation"
+        return "Cross-country fallback"
     return str(value or "—").replace("_", " ").title()
 
 
@@ -2370,7 +2440,6 @@ def _render_compact_reallocation_table(recommendations: list[dict]) -> None:
         return
 
     table_df = _compact_reallocation_rows(recommendations)
-    render_content_card_start()
     st.dataframe(
         rename_display_columns(
             table_df,
@@ -2387,33 +2456,44 @@ def _render_compact_reallocation_table(recommendations: list[dict]) -> None:
         use_container_width=True,
         hide_index=True,
     )
-    render_content_card_end()
 
 
 def _render_reallocation_card(item: dict) -> None:
+    is_fallback = item.get("match_type") == "cross_country_fallback"
     compact_fields = [
         ("Resource", format_resource_label(item.get("resource_type"))),
         ("From", item.get("from_zone_name") or "—"),
         ("To", item.get("to_zone_name") or "—"),
         ("Qty", format_number(item.get("recommended_quantity"))),
         ("Urgency", item.get("urgency_level") or "—"),
-        ("Confidence", _format_confidence_level(item.get("confidence_level"))),
         ("Match", _format_match_type(item.get("match_type"))),
+        ("Confidence", _format_confidence_level(item.get("confidence_level"))),
+        (
+            "Validation",
+            "Validation required" if is_fallback else "Field validation required",
+        ),
     ]
     fields_html = "".join(
         f'<div class="zone-detail-item"><span class="zone-detail-label">{html.escape(label)}</span>'
         f'<span class="zone-detail-value">{html.escape(str(value))}</span></div>'
         for label, value in compact_fields
     )
-    feasibility = (item.get("feasibility_note") or "").strip()
+    detail_parts: list[str] = []
+    if is_fallback:
+        detail_parts.append(
+            f'<p class="reallocation-card-detail">{html.escape(CROSS_COUNTRY_CARD_FEASIBILITY)}</p>'
+        )
+    else:
+        feasibility = (item.get("feasibility_note") or "").strip()
+        if feasibility:
+            detail_parts.append(
+                f'<p class="reallocation-card-detail">{html.escape(feasibility)}</p>'
+            )
     reason = (item.get("reason") or "").strip()
-    detail_parts = []
-    if feasibility:
-        detail_parts.append(f'<p class="reallocation-card-detail">{html.escape(feasibility)}</p>')
     if reason:
         detail_parts.append(f'<p class="reallocation-card-detail">{html.escape(reason)}</p>')
     details_html = "".join(detail_parts)
-    card_class = "zone-details-card reallocation-fallback-card" if item.get("match_type") == "cross_country_fallback" else "zone-details-card"
+    card_class = "zone-details-card reallocation-fallback-card" if is_fallback else "zone-details-card"
     st.markdown(
         f"""
         <div class="{card_class}" style="margin-bottom: 0.75rem;">
@@ -2476,9 +2556,7 @@ def render_reallocation_recommendations_section(
     with st.expander("View all transfer recommendations", expanded=expander_default):
         if has_fallback:
             st.markdown(
-                '<div class="reallocation-fallback-banner">'
-                "Fallback / requires validation — cross-country transfers are lower-confidence "
-                "and need additional coordination review before action.</div>",
+                f'<div class="reallocation-fallback-banner">{html.escape(CROSS_COUNTRY_EXPANDER_WARNING)}</div>',
                 unsafe_allow_html=True,
             )
         _render_compact_reallocation_table(recommendations)
