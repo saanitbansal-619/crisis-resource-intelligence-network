@@ -19,11 +19,11 @@ from sqlalchemy import create_engine, text
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 ENV_PATH = PROJECT_ROOT / ".env"
 
-API_BASE_URL = "http://127.0.0.1:8001"
+load_dotenv(dotenv_path=ENV_PATH, override=True, encoding="utf-8-sig")
+
+API_BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:8001")
 REQUEST_TIMEOUT = 10
 AI_BRIEFING_TIMEOUT = 180
-
-load_dotenv(dotenv_path=ENV_PATH, override=True, encoding="utf-8-sig")
 
 
 def _parse_database_url_manual(env_path: Path) -> str | None:

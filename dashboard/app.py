@@ -9,6 +9,7 @@ Run: streamlit run dashboard/app.py
 
 import html
 import json
+import os
 import re
 from datetime import datetime
 from io import BytesIO
@@ -26,7 +27,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-DEFAULT_API_BASE = "http://127.0.0.1:8001"
+API_BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:8001")
 
 # Humanitarian operations color palette
 COLOR_BG = "#F6F0E6"
@@ -101,8 +102,6 @@ COLUMN_LABELS = {
 CHART_TEMPLATE = "plotly_white"
 CHART_BG = COLOR_CARD
 CHART_PAPER = COLOR_BG
-
-API_BASE_URL = DEFAULT_API_BASE
 
 DASHBOARD_REQUEST_TIMEOUT = 10
 AI_BRIEFING_REQUEST_TIMEOUT = 180
@@ -1049,8 +1048,8 @@ RAG_TRANSPARENCY_NOTE = (
     "It is not an LLM-generated analysis."
 )
 AI_BRIEF_UNAVAILABLE_MESSAGE = (
-    "AI-assisted briefing is currently unavailable. "
-    "Make sure Ollama is running and llama3.2 is available."
+    "AI-assisted briefing is available in local demo mode with Ollama. "
+    "Template briefs and retrieved context remain available."
 )
 AI_BRIEF_NOTE = (
     "Optional local LLM draft generated from structured zone metrics and retrieved crisis context."
@@ -1995,8 +1994,8 @@ def render_metric_card(label: str, value, accent: str = "neutral") -> None:
 
 
 def get_api_base() -> str:
-    """Return the internal API base URL (not exposed in the UI)."""
-    return API_BASE_URL
+    """Return the API base URL from API_BASE_URL environment variable."""
+    return os.getenv("API_BASE_URL", API_BASE_URL).rstrip("/")
 
 
 def show_backend_warning() -> None:

@@ -179,7 +179,7 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Set `RELIEFWEB_APPNAME` (ReliefWeb v2 requires a [pre-approved appname](https://apidoc.reliefweb.int/parameters#appname)), `DATABASE_URL`, and `POSTGRES_PORT` (**5433**, matching `docker-compose.yml`). See [docs/env_setup.md](docs/env_setup.md).
+Set `RELIEFWEB_APPNAME` (ReliefWeb v2 requires a [pre-approved appname](https://apidoc.reliefweb.int/parameters#appname)), `DATABASE_URL`, `API_BASE_URL` (default `http://127.0.0.1:8001`), and `POSTGRES_PORT` (**5433**, matching `docker-compose.yml`). See [docs/env_setup.md](docs/env_setup.md).
 
 ### 3. Start Docker database
 
@@ -255,6 +255,42 @@ python -m rag.chunk_documents
 python -m database.create_rag_tables
 python -m rag.embed_chunks
 ```
+
+## Deployment Notes
+
+This project can be deployed on [Render](https://render.com/) (or similar platforms) as separate web services.
+
+### FastAPI backend (Web Service)
+
+```bash
+uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+```
+
+Set environment variables on the backend service:
+
+- `DATABASE_URL` — deployed PostgreSQL connection string (for example, Render PostgreSQL or another managed database with pgvector support)
+- `RELIEFWEB_APPNAME` — approved ReliefWeb appname (if running ingestion from the hosted service)
+
+### Streamlit dashboard (Web Service)
+
+```bash
+streamlit run dashboard/app.py --server.port $PORT --server.address 0.0.0.0
+```
+
+Set environment variables on the Streamlit service:
+
+- `API_BASE_URL` — public URL of the deployed FastAPI service (for example, `https://your-api.onrender.com`)
+
+The dashboard reads `API_BASE_URL` at startup and uses it for all backend requests. Local default: `http://127.0.0.1:8001`.
+
+### Optional local AI briefings
+
+Ollama-based AI-assisted briefings are **optional** and are intended for local demo mode. Hosted deployments typically will not have Ollama available. When AI generation is unavailable, the dashboard shows a warning and template briefs plus retrieved crisis context remain available.
+
+### Hosted database notes
+
+- Load crisis data, simulated resources, and mismatch scores into the deployed PostgreSQL instance before demoing the hosted dashboard.
+- RAG features require pgvector tables and embedded chunks in the deployed database.
 
 ## API Endpoints
 
