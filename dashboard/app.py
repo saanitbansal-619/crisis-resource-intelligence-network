@@ -29,7 +29,7 @@ st.set_page_config(
 DEFAULT_API_BASE = "http://127.0.0.1:8001"
 
 # Humanitarian operations color palette
-COLOR_BG = "#F6F7F9"
+COLOR_BG = "#F6F0E6"
 COLOR_CARD = "#FFFFFF"
 COLOR_TEXT = "#1F2933"
 COLOR_SECONDARY = "#475467"
@@ -183,6 +183,10 @@ def inject_styles() -> None:
             color: {COLOR_TEXT};
         }}
 
+        section[data-testid="stMain"] {{
+            background-color: {COLOR_BG};
+        }}
+
         header[data-testid="stHeader"] {{
             background: transparent;
         }}
@@ -191,10 +195,11 @@ def inject_styles() -> None:
             max-width: 1500px !important;
             padding-left: 2rem !important;
             padding-right: 2rem !important;
-            padding-top: 1.5rem !important;
+            padding-top: 1.25rem !important;
             padding-bottom: 2.5rem !important;
             margin-left: auto !important;
             margin-right: auto !important;
+            background: transparent !important;
         }}
         section[data-testid="stMain"] > div {{
             max-width: 1500px !important;
@@ -330,31 +335,32 @@ def inject_styles() -> None:
             background: {COLOR_CARD};
             border: 1px solid {COLOR_BORDER};
             border-radius: 12px;
-            padding: 1.35rem 1.5rem 1.2rem;
-            margin-bottom: 0.85rem;
-            box-shadow: 0 2px 8px rgba(16, 24, 40, 0.06);
+            padding: 1.55rem 1.75rem 1.4rem;
+            margin: 0.15rem 0 1rem 0;
+            box-shadow: 0 2px 10px rgba(31, 41, 51, 0.06);
         }}
         .hero-eyebrow {{
-            font-size: 0.72rem;
+            font-size: 0.7rem;
             font-weight: 700;
-            letter-spacing: 0.08em;
+            letter-spacing: 0.1em;
             text-transform: uppercase;
             color: {COLOR_PRIMARY};
-            margin-bottom: 0.45rem;
+            margin: 0 0 0.55rem 0;
         }}
         .hero-title {{
-            font-size: 1.85rem;
+            font-size: clamp(2rem, 3.2vw, 2.85rem);
             font-weight: 700;
             color: {COLOR_TEXT};
-            line-height: 1.2;
-            margin: 0 0 0.4rem 0;
+            line-height: 1.12;
+            letter-spacing: -0.02em;
+            margin: 0 0 0.65rem 0;
         }}
         .hero-subtitle {{
-            font-size: 1rem;
+            font-size: 1.05rem;
             color: {COLOR_SECONDARY};
-            line-height: 1.5;
+            line-height: 1.55;
             margin: 0;
-            max-width: 720px;
+            max-width: 780px;
         }}
 
         /* Website-style tab navigation */
@@ -383,7 +389,7 @@ def inject_styles() -> None:
         }}
         div[data-testid="stTabs"] [data-baseweb="tab"]:hover {{
             color: {COLOR_PRIMARY} !important;
-            background: #F2F4F7 !important;
+            background: #EFE8DE !important;
         }}
         div[data-testid="stTabs"] [aria-selected="true"] {{
             color: {COLOR_PRIMARY} !important;
@@ -2023,8 +2029,8 @@ def render_hero_header() -> None:
         """
         <div class="hero-card">
             <div class="hero-eyebrow">Crisis Resource Intelligence Network</div>
-            <div class="hero-title">Humanitarian Resource Coordination Dashboard</div>
-            <p class="hero-subtitle">Crisis monitoring, resource gaps, and operational supply-demand intelligence</p>
+            <div class="hero-title">Humanitarian Crisis Resource Intelligence Dashboard</div>
+            <p class="hero-subtitle">Crisis monitoring, resource gap analysis, transfer recommendations, and AI-assisted operational briefings</p>
         </div>
         """,
         unsafe_allow_html=True,
