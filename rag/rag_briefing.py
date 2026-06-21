@@ -2,11 +2,14 @@
 Prepare retrieval-based RAG context for zone briefings and AI-assisted drafts.
 """
 
-from rag.hybrid_retriever import hybrid_retrieve_context
+from rag.hybrid_retriever import retrieve_context_with_mode
 
 TRANSPARENCY_NOTE = (
     "This is retrieval-based context from ReliefWeb/GDACS records. "
     "It is not an LLM-generated analysis."
+)
+KEYWORD_FALLBACK_NOTE = (
+    "Semantic retrieval is unavailable in hosted mode, showing keyword-based retrieved crisis context."
 )
 
 
@@ -79,10 +82,20 @@ def _normalize_retrieved_context(retrieved_context: list[dict]) -> list[dict]:
     return normalized
 
 
-def _build_rag_summary(zone: dict, retrieved_context: list[dict], top_k: int = 5) -> str:
+def _build_rag_summary(
+    zone: dict,
+    retrieved_context: list[dict],
+    top_k: int = 5,
+    retrieval_mode: str = "hybrid",
+) -> str:
     country = _clean(zone.get("country")) or "the selected zone"
 
     if not retrieved_context:
+        if retrieval_mode == "keyword_fallback":
+            return (
+                f"{KEYWORD_FALLBACK_NOTE} No matching ReliefWeb/GDACS chunks were found for this zone query. "
+                f"{TRANSPARENCY_NOTE}"
+            )
         return (
             "No retrieved context was found from ReliefWeb/GDACS documents for this zone query. "
             f"{TRANSPARENCY_NOTE}"
@@ -95,13 +108,21 @@ def _build_rag_summary(zone: dict, retrieved_context: list[dict], top_k: int = 5
 
     parts: list[str] = []
 
+    if retrieval_mode == "keyword_fallback":
+        parts.append(KEYWORD_FALLBACK_NOTE)
+
     if country_specific_context:
         count = len(country_specific_context)
         source_label = "source" if count == 1 else "sources"
-        parts.append(f"Country-specific context found for {country} ({count} {source_label}).")
-        parts.append(
-            "Context was retrieved using hybrid semantic and keyword search over ReliefWeb/GDACS records."
-        )
+        if retrieval_mode == "keyword_fallback":
+            parts.append(
+                f"Keyword-based country-specific context found for {country} ({count} {source_label})."
+            )
+        else:
+            parts.append(f"Country-specific context found for {country} ({count} {source_label}).")
+            parts.append(
+                "Context was retrieved using hybrid semantic and keyword search over ReliefWeb/GDACS records."
+            )
     else:
         parts.append(
             f"No country-specific context was found for {country}. "
@@ -128,11 +149,18 @@ def generate_rag_context_for_zone(
 ) -> dict:
     """Build a zone query, retrieve relevant chunks, and return structured RAG context."""
     query = build_zone_rag_query(zone, priority_needs=priority_needs, related_alert=related_alert)
-    retrieved_context = _normalize_retrieved_context(hybrid_retrieve_context(query, top_k=top_k))
-    rag_summary = _build_rag_summary(zone, retrieved_context, top_k=top_k)
+    retrieved_context, retrieval_mode = retrieve_context_with_mode(query, top_k=top_k)
+    retrieved_context = _normalize_retrieved_context(retrieved_context)
+    rag_summary = _build_rag_summary(
+        zone,
+        retrieved_context,
+        top_k=top_k,
+        retrieval_mode=retrieval_mode,
+    )
 
     return {
         "query": query,
         "retrieved_context": retrieved_context,
         "rag_summary": rag_summary,
+        "retrieval_mode": retrieval_mode,
     }

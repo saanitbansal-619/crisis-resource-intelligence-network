@@ -1039,8 +1039,10 @@ def get_situation_report(base_url: str) -> dict | None:
 
 
 RAG_UNAVAILABLE_MESSAGE = (
-    "Retrieved crisis context is currently unavailable. "
-    "Run the RAG corpus/chunk scripts and restart the API."
+    "Retrieved crisis context is unavailable because no RAG chunks were found in the database."
+)
+RAG_KEYWORD_FALLBACK_NOTE = (
+    "Semantic retrieval is unavailable in hosted mode, showing keyword-based retrieved crisis context."
 )
 RAG_EMPTY_MESSAGE = "No retrieved crisis context available for this zone."
 RAG_TRANSPARENCY_NOTE = (
@@ -1286,10 +1288,16 @@ def build_compact_rag_summary(rag_context: dict) -> str:
         return ""
 
     parts: list[str] = []
+    if rag_context.get("retrieval_mode") == "keyword_fallback":
+        parts.append(RAG_KEYWORD_FALLBACK_NOTE)
+
     if country_specific:
         count = len(country_specific)
         source_label = "source" if count == 1 else "sources"
-        parts.append(f"Country-specific context found for {country} ({count} {source_label}).")
+        if rag_context.get("retrieval_mode") == "keyword_fallback":
+            parts.append(f"Keyword-based country-specific context found for {country} ({count} {source_label}).")
+        else:
+            parts.append(f"Country-specific context found for {country} ({count} {source_label}).")
     else:
         parts.append(f"No country-specific context found for {country}.")
 

@@ -1,11 +1,15 @@
 """
 Hybrid retrieval combining pgvector semantic search, TF-IDF keywords, and metadata boosts.
 
+When Ollama is unavailable (for example on hosted deployment), falls back to
+keyword/metadata retrieval over PostgreSQL `rag_chunks` without query embeddings.
+
 Run: python -m rag.hybrid_retriever "Chad humanitarian food water displacement needs"
 """
 
 import sys
 
+import requests
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from sqlalchemy import create_engine, text
@@ -68,6 +72,45 @@ def detect_requested_event_type(query: str) -> str | None:
         if event_type in query_norm:
             return event_type
     return None
+
+
+def load_db_chunks(conn) -> list[dict]:
+    rows = conn.execute(
+        text(
+            """
+            SELECT
+                chunk_id,
+                doc_id,
+                source_id,
+                source_type,
+                title,
+                country,
+                event_type,
+                published_at,
+                url,
+                chunk_index,
+                chunk_text
+            FROM rag_chunks
+            WHERE chunk_text IS NOT NULL AND TRIM(chunk_text) <> ''
+            """
+        )
+    ).mappings()
+    return [dict(row) for row in rows]
+
+
+def count_db_chunks(conn) -> int:
+    row = conn.execute(text("SELECT COUNT(*) AS count FROM rag_chunks")).mappings().first()
+    return int((row or {}).get("count") or 0)
+
+
+def rag_chunks_available() -> bool:
+    """Return True when the database contains at least one RAG chunk."""
+    try:
+        engine = create_engine(get_database_url())
+        with engine.connect() as conn:
+            return count_db_chunks(conn) > 0
+    except Exception:
+        return False
 
 
 def load_countries_from_db(conn) -> set[str]:
@@ -206,12 +249,41 @@ def _build_result(
     }
 
 
-def hybrid_retrieve_context(query: str, top_k: int = 5) -> list[dict]:
-    """Combine semantic, keyword, and metadata scores with country-aware fallback."""
-    query = (query or "").strip()
-    if not query:
-        return []
+def _select_ranked_results(
+    scored_results: list[tuple[float, dict]],
+    requested_country: str | None,
+    top_k: int,
+) -> list[dict]:
+    scored_results.sort(key=lambda item: item[0], reverse=True)
 
+    if requested_country:
+        country_specific: list[dict] = []
+        fallback: list[dict] = []
+
+        for _, result in scored_results:
+            is_match = _country_matches(requested_country, result.get("country", ""))
+            result["is_fallback"] = not is_match
+            if is_match:
+                country_specific.append(result)
+            else:
+                fallback.append(result)
+
+        selected = country_specific[:top_k]
+        if len(selected) < top_k:
+            selected.extend(fallback[: top_k - len(selected)])
+    else:
+        selected = [result for _, result in scored_results[:top_k]]
+        for result in selected:
+            result["is_fallback"] = False
+
+    for rank, result in enumerate(selected, start=1):
+        result["rank"] = rank
+
+    return selected
+
+
+def _hybrid_retrieve_semantic(query: str, top_k: int = 5) -> list[dict]:
+    """Run full hybrid semantic + keyword retrieval using Ollama query embeddings."""
     ensure_ollama_ready()
     query_embedding = get_ollama_embedding(query)
     engine = create_engine(get_database_url())
@@ -253,32 +325,81 @@ def hybrid_retrieve_context(query: str, top_k: int = 5) -> list[dict]:
             )
         )
 
-    scored_results.sort(key=lambda item: item[0], reverse=True)
-
-    if requested_country:
-        country_specific: list[dict] = []
-        fallback: list[dict] = []
-
-        for _, result in scored_results:
-            is_match = _country_matches(requested_country, result.get("country", ""))
-            result["is_fallback"] = not is_match
-            if is_match:
-                country_specific.append(result)
-            else:
-                fallback.append(result)
-
-        selected = country_specific[:top_k]
-        if len(selected) < top_k:
-            selected.extend(fallback[: top_k - len(selected)])
-    else:
-        selected = [result for _, result in scored_results[:top_k]]
-        for result in selected:
-            result["is_fallback"] = False
-
-    for rank, result in enumerate(selected, start=1):
-        result["rank"] = rank
-
+    selected = _select_ranked_results(scored_results, requested_country, top_k)
+    for result in selected:
+        result["retrieval_mode"] = "hybrid"
     return selected
+
+
+def keyword_retrieve_context_from_db(query: str, top_k: int = 5) -> list[dict]:
+    """Keyword/metadata retrieval from PostgreSQL when Ollama embeddings are unavailable."""
+    engine = create_engine(get_database_url())
+
+    with engine.connect() as conn:
+        countries = load_countries_from_db(conn)
+        db_chunks = load_db_chunks(conn)
+
+    if not db_chunks:
+        return []
+
+    requested_country = detect_requested_country(query, countries)
+    requested_event_type = detect_requested_event_type(query)
+    keyword_scores = build_keyword_scores(query, db_chunks)
+
+    scored_results: list[tuple[float, dict]] = []
+    for chunk in db_chunks:
+        chunk_id = chunk.get("chunk_id")
+        keyword_score = keyword_scores.get(chunk_id, keyword_overlap_score(query, chunk))
+        metadata_boost = compute_metadata_boost(
+            query,
+            chunk,
+            requested_country,
+            requested_event_type,
+        )
+        final_score = keyword_score + metadata_boost
+        if keyword_score <= 0 and metadata_boost <= 0:
+            continue
+
+        scored_results.append(
+            (
+                final_score,
+                _build_result(
+                    chunk,
+                    final_score,
+                    0.0,
+                    keyword_score,
+                    metadata_boost,
+                    is_fallback=False,
+                ),
+            )
+        )
+
+    selected = _select_ranked_results(scored_results, requested_country, top_k)
+    for result in selected:
+        result["retrieval_mode"] = "keyword_fallback"
+    return selected
+
+
+def retrieve_context_with_mode(query: str, top_k: int = 5) -> tuple[list[dict], str]:
+    """Retrieve context and report whether hybrid semantic or keyword fallback was used."""
+    query = (query or "").strip()
+    if not query:
+        return [], "hybrid"
+
+    try:
+        results = _hybrid_retrieve_semantic(query, top_k=top_k)
+        return results, "hybrid"
+    except (RuntimeError, requests.RequestException):
+        results = keyword_retrieve_context_from_db(query, top_k=top_k)
+        if results:
+            return results, "keyword_fallback"
+        return [], "keyword_fallback"
+
+
+def hybrid_retrieve_context(query: str, top_k: int = 5) -> list[dict]:
+    """Combine semantic, keyword, and metadata scores with country-aware fallback."""
+    results, _mode = retrieve_context_with_mode(query, top_k=top_k)
+    return results
 
 
 def print_results(
@@ -352,7 +473,7 @@ def main() -> None:
             countries = load_countries_from_db(conn)
         requested_country = detect_requested_country(query, countries)
         requested_event_type = detect_requested_event_type(query)
-        results = hybrid_retrieve_context(query, top_k=top_k)
+        results = retrieve_context_with_mode(query, top_k=top_k)[0]
     except RuntimeError as exc:
         print(exc)
         sys.exit(1)

@@ -3,7 +3,6 @@ Summary report endpoints for KPIs and resource analytics.
 """
 
 from datetime import datetime, timezone
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text
@@ -20,8 +19,8 @@ from rag.llm_briefing import (
     OllamaUnavailableError,
     generate_ai_operational_brief,
 )
-from rag.rag_briefing import generate_rag_context_for_zone
-from rag.simple_retriever import CHUNKS_PATH
+from rag.hybrid_retriever import rag_chunks_available
+from rag.rag_briefing import KEYWORD_FALLBACK_NOTE, generate_rag_context_for_zone
 
 URGENCY_RANK = {"low": 1, "medium": 2, "high": 3, "critical": 4}
 
@@ -382,6 +381,30 @@ def _preview_chunk_text(text_value: str, limit: int = 220) -> str:
     return cleaned[: limit - 3] + "..."
 
 
+def _count_rag_chunks(db: Session) -> int:
+    try:
+        row = row_to_dict(db.execute(text("SELECT COUNT(*) AS count FROM rag_chunks")))
+        return int((row or {}).get("count") or 0)
+    except Exception:
+        return 0
+
+
+def _rag_data_available(db: Session) -> bool:
+    if _count_rag_chunks(db) > 0:
+        return True
+    return rag_chunks_available()
+
+
+def _rag_transparency_note(retrieval_mode: str) -> str:
+    base_note = (
+        "This is retrieval-based context from ReliefWeb/GDACS records. "
+        "It is not an LLM-generated analysis."
+    )
+    if retrieval_mode == "keyword_fallback":
+        return f"{KEYWORD_FALLBACK_NOTE} {base_note}"
+    return base_note
+
+
 def _format_retrieved_context(retrieved_context: list[dict]) -> list[dict]:
     """Shape hybrid retrieval results for API and dashboard consumers."""
     formatted: list[dict] = []
@@ -401,6 +424,7 @@ def _format_retrieved_context(retrieved_context: list[dict]) -> list[dict]:
                 "keyword_score": item.get("keyword_score"),
                 "metadata_boost": item.get("metadata_boost"),
                 "is_fallback": bool(item.get("is_fallback", False)),
+                "retrieval_mode": item.get("retrieval_mode"),
                 "preview": _preview_chunk_text(item.get("chunk_text", "")),
             }
         )
@@ -620,12 +644,12 @@ def get_zone_briefing(zone_id: str, db: Session = Depends(get_db)) -> dict:
 @router.get("/rag-zone-context/{zone_id}")
 def get_rag_zone_context(zone_id: str, db: Session = Depends(get_db)) -> dict:
     """Return retrieval-based ReliefWeb/GDACS context for one crisis zone."""
-    if not Path(CHUNKS_PATH).exists():
+    if not _rag_data_available(db):
         raise HTTPException(
             status_code=503,
             detail=(
-                "RAG chunks not found. Run python -m rag.build_corpus and "
-                "python -m rag.chunk_documents first."
+                "No RAG chunks were found in the database. Load embedded ReliefWeb/GDACS "
+                "chunks into rag_chunks before requesting retrieved context."
             ),
         )
 
@@ -671,17 +695,26 @@ def get_rag_zone_context(zone_id: str, db: Session = Depends(get_db)) -> dict:
             detail=f"RAG retrieval failed for zone '{zone_id}': {exc}",
         ) from exc
 
+    retrieval_mode = rag_result.get("retrieval_mode") or "hybrid"
+    retrieved_context = rag_result.get("retrieved_context") or []
+    if not retrieved_context:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "No matching RAG chunks were found for this zone query. "
+                "Confirm rag_chunks contains embedded ReliefWeb/GDACS data."
+            ),
+        )
+
     return {
         "zone_id": zone.get("zone_id"),
         "zone_name": zone.get("zone_name"),
         "country": zone.get("country"),
         "query": rag_result.get("query", ""),
-        "retrieved_context": _format_retrieved_context(rag_result.get("retrieved_context", [])),
+        "retrieval_mode": retrieval_mode,
+        "retrieved_context": _format_retrieved_context(retrieved_context),
         "rag_summary": rag_result.get("rag_summary", ""),
-        "transparency_note": (
-            "This is retrieval-based context from ReliefWeb/GDACS records. "
-            "It is not an LLM-generated analysis."
-        ),
+        "transparency_note": _rag_transparency_note(retrieval_mode),
     }
 
 
@@ -724,9 +757,7 @@ def get_ai_zone_briefing(zone_id: str, db: Session = Depends(get_db)) -> dict:
     retrieved_context: list[dict] = []
     rag_unavailable = False
 
-    if not Path(CHUNKS_PATH).exists():
-        rag_unavailable = True
-    else:
+    if _rag_data_available(db):
         try:
             rag_result = generate_rag_context_for_zone(
                 zone=zone,
@@ -735,9 +766,13 @@ def get_ai_zone_briefing(zone_id: str, db: Session = Depends(get_db)) -> dict:
                 top_k=5,
             )
             retrieved_context = rag_result.get("retrieved_context", [])
+            if not retrieved_context:
+                rag_unavailable = True
         except Exception:
             rag_unavailable = True
             retrieved_context = []
+    else:
+        rag_unavailable = True
 
     try:
         ai_result = generate_ai_operational_brief(
