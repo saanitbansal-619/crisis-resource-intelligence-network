@@ -14,6 +14,21 @@ This is a **portfolio prototype**, not a production emergency response system.
 - **Operational inventory and resource request data are simulated** because real NGO supply data is generally not public.
 - Transfer recommendations and AI briefings are decision-support outputs that require human review before any operational use.
 
+## Live Demo
+
+- **Dashboard:** [https://crisis-resource-dashboard.onrender.com](https://crisis-resource-dashboard.onrender.com)
+- **API Docs:** [https://crisis-resource-api.onrender.com/docs](https://crisis-resource-api.onrender.com/docs)
+
+> **Note:** The deployed demo may take 30–60 seconds to wake up on first load because it is hosted on a free Render instance.
+
+**Hosted deployment note:**
+
+- The deployed dashboard uses a live Render FastAPI backend and Render PostgreSQL database.
+- Core dashboard features are available online: KPI overview, situation report, priority needs, surplus, resource balance, operational map, zone briefings, transfer recommendations, and retrieval-based crisis context.
+- Semantic RAG retrieval and AI-assisted briefings use local Ollama in full local demo mode.
+- In hosted Render mode, when Ollama is unavailable, retrieved crisis context falls back to keyword-based ReliefWeb/GDACS retrieval.
+- AI-assisted briefings are shown as local-demo-only when Ollama is unavailable.
+
 ## Key Features
 
 - ReliefWeb and GDACS ingestion
@@ -34,12 +49,13 @@ This is a **portfolio prototype**, not a production emergency response system.
 |--------------|---------------------------------------------------------|
 | Ingestion    | Python, requests, pandas                                |
 | Database     | PostgreSQL, pgvector, SQLAlchemy                        |
+| Hosted DB    | Render PostgreSQL                                       |
+| Local DB     | Docker Compose (PostgreSQL + pgvector)                  |
 | Analytics    | SQL, pandas, scikit-learn (TF-IDF keyword scoring)      |
-| Backend API  | FastAPI, uvicorn                                        |
-| Dashboard    | Streamlit, Plotly                                       |
-| Embeddings   | Ollama `nomic-embed-text` (768-dim)                     |
-| Generation   | Ollama `llama3.2` (local LLM)                           |
-| Local infra  | Docker Compose (PostgreSQL + pgvector)                  |
+| Backend API  | FastAPI, uvicorn (Render Web Service when hosted)       |
+| Dashboard    | Streamlit, Plotly (Render Web Service when hosted)        |
+| Embeddings   | Ollama `nomic-embed-text` (768-dim, local demo mode)    |
+| Generation   | Ollama `llama3.2` (local LLM, local demo mode)            |
 
 ## Architecture
 
@@ -243,7 +259,7 @@ Dashboard URL: http://localhost:8501
 
 ### 7. Optional: Ollama and RAG setup
 
-Required for retrieved crisis context and AI-assisted briefings:
+Required for **full local demo mode** with semantic RAG retrieval and AI-assisted briefings:
 
 ```bash
 ollama pull nomic-embed-text
@@ -256,41 +272,60 @@ python -m database.create_rag_tables
 python -m rag.embed_chunks
 ```
 
-## Deployment Notes
+On the hosted Render demo, keyword-based retrieved crisis context is available without Ollama when `rag_chunks` data is loaded in PostgreSQL.
 
-This project can be deployed on [Render](https://render.com/) (or similar platforms) as separate web services.
+## Hosted Deployment
 
-### FastAPI backend (Web Service)
+This project is deployed as a portfolio demo using [Render](https://render.com/):
+
+| Component | Hosting |
+|-----------|---------|
+| FastAPI backend | Render Web Service |
+| Streamlit dashboard | Render Web Service |
+| PostgreSQL database | Render PostgreSQL |
+| Local development database | Docker Compose with PostgreSQL + pgvector |
+| Local AI/RAG mode | Ollama with `nomic-embed-text` and `llama3.2` |
+
+**Live URLs:**
+
+- Dashboard: [https://crisis-resource-dashboard.onrender.com](https://crisis-resource-dashboard.onrender.com)
+- API docs: [https://crisis-resource-api.onrender.com/docs](https://crisis-resource-api.onrender.com/docs)
+
+**Hosted behavior:**
+
+- The dashboard reads from the deployed FastAPI API using `API_BASE_URL`.
+- The backend reads from Render PostgreSQL using `DATABASE_URL`.
+- The hosted dashboard supports keyword-based retrieved crisis context when local Ollama semantic retrieval is unavailable.
+- AI-assisted briefings remain available in local demo mode with Ollama.
+
+**Render start commands:**
+
+FastAPI backend:
 
 ```bash
 uvicorn backend.main:app --host 0.0.0.0 --port $PORT
 ```
 
-Set environment variables on the backend service:
-
-- `DATABASE_URL` — deployed PostgreSQL connection string (for example, Render PostgreSQL or another managed database with pgvector support)
-- `RELIEFWEB_APPNAME` — approved ReliefWeb appname (if running ingestion from the hosted service)
-
-### Streamlit dashboard (Web Service)
+Streamlit dashboard:
 
 ```bash
 streamlit run dashboard/app.py --server.port $PORT --server.address 0.0.0.0
 ```
 
-Set environment variables on the Streamlit service:
+**Environment variables (no secrets in this README):**
 
-- `API_BASE_URL` — public URL of the deployed FastAPI service (for example, `https://your-api.onrender.com`)
+| Service | Variable | Purpose |
+|---------|----------|---------|
+| Backend | `DATABASE_URL` | Render PostgreSQL connection string |
+| Backend | `RELIEFWEB_APPNAME` | ReliefWeb ingestion (if run from hosted service) |
+| Dashboard | `API_BASE_URL` | Public URL of the deployed FastAPI service |
 
-The dashboard reads `API_BASE_URL` at startup and uses it for all backend requests. Local default: `http://127.0.0.1:8001`.
+Local default for `API_BASE_URL`: `http://127.0.0.1:8001`.
 
-### Optional local AI briefings
+**Data loading for hosted demos:**
 
-Ollama-based AI-assisted briefings are **optional** and are intended for local demo mode. Hosted deployments typically will not have Ollama available. When AI generation is unavailable, the dashboard shows a warning and template briefs plus retrieved crisis context remain available.
-
-### Hosted database notes
-
-- Load crisis data, simulated resources, and mismatch scores into the deployed PostgreSQL instance before demoing the hosted dashboard.
-- RAG features require pgvector tables and embedded chunks in the deployed database.
+- Load crisis data, simulated resources, mismatch scores, and RAG chunks into the Render PostgreSQL instance before presenting the hosted dashboard.
+- RAG features require `rag_chunks` records in the deployed database; semantic search additionally requires embeddings for full local hybrid mode.
 
 ## API Endpoints
 
@@ -313,12 +348,19 @@ Key routes:
 - `GET /mismatches/surplus` — Surplus resources
 - `GET /mismatches/reallocation-recommendations` — Deterministic transfer recommendations
 
-Examples:
+Examples (local):
 
 - http://127.0.0.1:8001/reports/zone-briefing/ZONE001
 - http://127.0.0.1:8001/reports/situation-report
 - http://127.0.0.1:8001/reports/rag-zone-context/ZONE001
 - http://127.0.0.1:8001/mismatches/reallocation-recommendations
+
+Examples (hosted):
+
+- https://crisis-resource-api.onrender.com/reports/zone-briefing/ZONE001
+- https://crisis-resource-api.onrender.com/reports/situation-report
+- https://crisis-resource-api.onrender.com/reports/rag-zone-context/ZONE001
+- https://crisis-resource-api.onrender.com/mismatches/reallocation-recommendations
 
 ## Methodology
 
@@ -363,7 +405,9 @@ Template-based briefs are the **stable default**—deterministic and grounded in
 
 ### Hybrid RAG retrieval
 
-Retrieved crisis context uses hybrid semantic + keyword search over ReliefWeb/GDACS chunks stored in PostgreSQL with pgvector. Results are boosted by country, event type, and source metadata. If too few country-specific records match, fallback results are included and labeled `is_fallback: true`.
+Retrieved crisis context uses hybrid semantic + keyword search over ReliefWeb/GDACS chunks stored in PostgreSQL with pgvector when Ollama is available locally. Results are boosted by country, event type, and source metadata. If too few country-specific records match, fallback results are included and labeled `is_fallback: true`.
+
+On the hosted Render demo, when Ollama is unavailable, the API falls back to keyword/metadata retrieval from `rag_chunks` in PostgreSQL and labels results with `retrieval_mode: keyword_fallback`.
 
 ### Local LLM-assisted briefings
 
@@ -398,9 +442,9 @@ This is a **portfolio prototype**, not a production emergency response system:
 | Week 5 | Streamlit dashboard with situation overview, priority needs, surplus, balance, and operational map |
 | Week 6 Part 1 | Zone briefing endpoint; map-based template operational briefs with PDF/copy export |
 | Week 6 Part 2 | pgvector RAG corpus, hybrid retrieval, optional Ollama AI briefings, demo health check |
-| Extensions | Resource reallocation recommendations; Overall Situation Report; dashboard polish and screenshots |
+| Extensions | Resource reallocation recommendations; Overall Situation Report; dashboard polish; Render deployment |
 
-Possible next steps: ML shortage-risk prediction, scheduled ingestion, cloud deployment, demo recording.
+Possible next steps: ML shortage-risk prediction, scheduled ingestion, and cloud hardening beyond the current portfolio demo.
 
 ## Project Structure
 
