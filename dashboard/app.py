@@ -30,16 +30,18 @@ DEFAULT_API_BASE = "http://127.0.0.1:8001"
 
 # Humanitarian operations color palette
 COLOR_BG = "#F6F0E6"
-COLOR_CARD = "#FFFFFF"
-COLOR_TEXT = "#1F2933"
-COLOR_SECONDARY = "#475467"
-COLOR_MUTED = "#667085"
-COLOR_PRIMARY = "#1F4E79"
+COLOR_CARD = "#FFFDF8"
+COLOR_TEXT = "#172033"
+COLOR_EYEBROW = "#315B7C"
+COLOR_SECONDARY = "#5B6472"
+COLOR_MUTED = "#6B7280"
+COLOR_PRIMARY = "#315B7C"
 COLOR_CRITICAL = "#B42318"
 COLOR_SEVERE = "#F59E0B"
 COLOR_SURPLUS = "#027A48"
-COLOR_BORDER = "#E5E7EB"
+COLOR_BORDER = "rgba(23, 32, 51, 0.08)"
 COLOR_STABLE = "#94A3B8"
+COLOR_CARD_SHADOW = "0 12px 32px rgba(23, 32, 51, 0.06)"
 
 STATUS_DISPLAY = {
     "critical shortage": "Critical Need",
@@ -226,10 +228,10 @@ def inject_styles() -> None:
         .info-card {{
             background: {COLOR_CARD};
             border: 1px solid {COLOR_BORDER};
-            border-radius: 10px;
+            border-radius: 14px;
             padding: 1rem 1.15rem;
             margin: 0.65rem 0 0.85rem 0;
-            box-shadow: 0 1px 3px rgba(16, 24, 40, 0.05);
+            box-shadow: {COLOR_CARD_SHADOW};
         }}
         .info-card-title {{
             font-size: 1rem;
@@ -274,10 +276,10 @@ def inject_styles() -> None:
         .step-card {{
             background: {COLOR_CARD};
             border: 1px solid {COLOR_BORDER};
-            border-radius: 10px;
+            border-radius: 14px;
             padding: 0.85rem 0.95rem;
             min-height: 110px;
-            box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+            box-shadow: {COLOR_CARD_SHADOW};
         }}
         .step-num {{
             display: inline-flex;
@@ -301,9 +303,9 @@ def inject_styles() -> None:
         .pipeline-flow {{
             margin-top: 0.75rem;
             padding: 0.75rem 0.9rem;
-            background: #F9FAFB;
+            background: {COLOR_CARD};
             border: 1px solid {COLOR_BORDER};
-            border-radius: 8px;
+            border-radius: 10px;
             font-size: 0.86rem;
             font-weight: 500;
             color: {COLOR_PRIMARY};
@@ -334,33 +336,46 @@ def inject_styles() -> None:
             box-sizing: border-box;
             background: {COLOR_CARD};
             border: 1px solid {COLOR_BORDER};
-            border-radius: 12px;
-            padding: 1.55rem 1.75rem 1.4rem;
-            margin: 0.15rem 0 1rem 0;
-            box-shadow: 0 2px 10px rgba(31, 41, 51, 0.06);
+            border-radius: 22px;
+            padding: 2.25rem 2.5rem;
+            margin: 0 0 1.5rem 0;
+            box-shadow: 0 18px 45px rgba(23, 32, 51, 0.08);
         }}
         .hero-eyebrow {{
-            font-size: 0.7rem;
+            font-size: 0.85rem;
             font-weight: 700;
-            letter-spacing: 0.1em;
+            letter-spacing: 0.16em;
             text-transform: uppercase;
-            color: {COLOR_PRIMARY};
-            margin: 0 0 0.55rem 0;
+            color: {COLOR_EYEBROW};
+            margin: 0 0 0.4rem 0;
         }}
         .hero-title {{
-            font-size: clamp(2rem, 3.2vw, 2.85rem);
-            font-weight: 700;
+            font-size: 3.2rem;
+            font-weight: 800;
             color: {COLOR_TEXT};
-            line-height: 1.12;
-            letter-spacing: -0.02em;
-            margin: 0 0 0.65rem 0;
+            line-height: 1.05;
+            letter-spacing: -0.025em;
+            margin: 0 0 0.75rem 0;
         }}
         .hero-subtitle {{
-            font-size: 1.05rem;
+            font-size: 1.2rem;
             color: {COLOR_SECONDARY};
-            line-height: 1.55;
+            line-height: 1.5;
             margin: 0;
-            max-width: 780px;
+            max-width: 1100px;
+        }}
+        @media (max-width: 768px) {{
+            .hero-card {{
+                padding: 1.4rem;
+                border-radius: 18px;
+            }}
+            .hero-title {{
+                font-size: 2.1rem;
+                line-height: 1.08;
+            }}
+            .hero-subtitle {{
+                font-size: 1.05rem;
+            }}
         }}
 
         /* Website-style tab navigation */
@@ -373,7 +388,7 @@ def inject_styles() -> None:
             gap: 0;
             background: {COLOR_CARD};
             border: 1px solid {COLOR_BORDER};
-            border-radius: 10px 10px 0 0;
+            border-radius: 14px 14px 0 0;
             padding: 0.35rem 0.5rem 0;
             border-bottom: 1px solid {COLOR_BORDER};
         }}
@@ -401,9 +416,9 @@ def inject_styles() -> None:
             background: {COLOR_CARD};
             border: 1px solid {COLOR_BORDER};
             border-top: none;
-            border-radius: 0 0 10px 10px;
-            padding: 1.1rem 1.15rem 1.25rem;
-            box-shadow: 0 2px 8px rgba(16, 24, 40, 0.04);
+            border-radius: 0 0 14px 14px;
+            padding: 1.15rem 1.25rem 1.35rem;
+            box-shadow: {COLOR_CARD_SHADOW};
         }}
 
         .section-header {{
@@ -421,24 +436,25 @@ def inject_styles() -> None:
             margin: 1rem 0 0.55rem 0;
         }}
         .ops-note {{
-            background-color: #F9FAFB;
+            background-color: {COLOR_CARD};
             border: 1px solid {COLOR_BORDER};
             border-left: 3px solid {COLOR_PRIMARY};
             padding: 0.75rem 1rem;
-            border-radius: 8px;
+            border-radius: 12px;
             color: {COLOR_SECONDARY};
             font-size: 0.92rem;
             margin: 0.35rem 0 0.85rem 0;
             line-height: 1.55;
+            box-shadow: {COLOR_CARD_SHADOW};
         }}
 
         .metric-card {{
             background-color: {COLOR_CARD};
             border: 1px solid {COLOR_BORDER};
-            border-radius: 10px;
-            padding: 0.75rem 0.95rem;
+            border-radius: 14px;
+            padding: 0.85rem 1rem;
             min-height: 78px;
-            box-shadow: 0 1px 3px rgba(16, 24, 40, 0.05);
+            box-shadow: {COLOR_CARD_SHADOW};
         }}
         .metric-label {{
             font-size: 0.74rem;
@@ -462,15 +478,15 @@ def inject_styles() -> None:
         .content-card {{
             background: {COLOR_CARD};
             border: 1px solid {COLOR_BORDER};
-            border-radius: 10px;
-            padding: 0.85rem;
+            border-radius: 14px;
+            padding: 0.9rem;
             margin: 0.65rem 0;
-            box-shadow: 0 1px 3px rgba(16, 24, 40, 0.04);
+            box-shadow: {COLOR_CARD_SHADOW};
         }}
 
         div[data-testid="stDataFrame"] {{
             border: 1px solid {COLOR_BORDER};
-            border-radius: 8px;
+            border-radius: 12px;
             overflow: hidden;
         }}
 
@@ -485,7 +501,7 @@ def inject_styles() -> None:
         .stButton > button:hover,
         .stButton > button:focus,
         .stButton > button:active {{
-            background-color: #163d5e;
+            background-color: #264A66;
             color: #FFFFFF !important;
             border: none;
         }}
@@ -502,7 +518,7 @@ def inject_styles() -> None:
             min-height: 44px !important;
             padding: 0 1rem !important;
             margin: 0 !important;
-            background-color: #1F4E79 !important;
+            background-color: {COLOR_PRIMARY} !important;
             color: #FFFFFF !important;
             border: none !important;
             border-radius: 8px !important;
@@ -525,7 +541,7 @@ def inject_styles() -> None:
         .stDownloadButton > button:hover,
         .stDownloadButton > button:focus,
         .stDownloadButton > button:active {{
-            background-color: #17436B !important;
+            background-color: #264A66 !important;
             color: #FFFFFF !important;
         }}
         [data-testid="stHtml"] {{
@@ -672,10 +688,10 @@ def inject_styles() -> None:
         .zone-brief-card {{
             background: {COLOR_CARD};
             border: 1px solid {COLOR_BORDER};
-            border-radius: 10px;
+            border-radius: 14px;
             padding: 1.2rem 1.3rem;
             margin: 0.85rem 0 0.65rem 0;
-            box-shadow: 0 1px 3px rgba(16, 24, 40, 0.05);
+            box-shadow: {COLOR_CARD_SHADOW};
         }}
         .zone-brief-title {{
             font-size: 1.1rem;
@@ -936,10 +952,10 @@ def inject_styles() -> None:
         .ai-brief-output-wrap {{
             background: {COLOR_CARD};
             border: 1px solid {COLOR_BORDER};
-            border-radius: 10px;
+            border-radius: 14px;
             padding: 1rem 1.1rem;
             margin-top: 0.75rem;
-            box-shadow: 0 1px 3px rgba(16, 24, 40, 0.05);
+            box-shadow: {COLOR_CARD_SHADOW};
         }}
         .ai-brief-output-wrap .ai-brief-transparency,
         .ai-brief-transparency {{
@@ -2028,7 +2044,7 @@ def render_hero_header() -> None:
     st.markdown(
         """
         <div class="hero-card">
-            <div class="hero-eyebrow">Crisis Resource Intelligence Network</div>
+            <div class="hero-eyebrow">CRISIS RESOURCE INTELLIGENCE NETWORK</div>
             <div class="hero-title">Humanitarian Crisis Resource Intelligence Dashboard</div>
             <p class="hero-subtitle">Crisis monitoring, resource gap analysis, transfer recommendations, and AI-assisted operational briefings</p>
         </div>
