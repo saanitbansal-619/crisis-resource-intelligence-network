@@ -1034,6 +1034,10 @@ def get_reallocation_recommendations(base_url: str) -> dict | None:
     return fetch_json("/mismatches/reallocation-recommendations", base_url)
 
 
+def get_optimized_transfers(base_url: str) -> dict | None:
+    return fetch_json("/mismatches/optimized-transfers", base_url)
+
+
 def get_situation_report(base_url: str) -> dict | None:
     return fetch_json("/reports/situation-report", base_url)
 
@@ -1070,6 +1074,18 @@ REALLOCATION_TRANSPARENCY_NOTE = (
     "Transfer recommendations are generated from simulated resource inventory/request data "
     "and should be validated by field coordinators before use."
 )
+OPTIMIZED_TRANSFER_DESCRIPTION = (
+    "This operations-research prototype uses Google OR-Tools to minimize simulated "
+    "transport cost while respecting supply and demand constraints."
+)
+OPTIMIZED_TRANSFER_UNAVAILABLE_MESSAGE = (
+    "Optimized transfer planning is currently unavailable. "
+    "Baseline deterministic recommendations remain available."
+)
+OPTIMIZED_TRANSFER_NOTE = (
+    "Optimization cost is based on simulated distance and logistics assumptions for demonstration purposes. "
+    "Values are relative cost units, not real-world USD estimates."
+)
 CROSS_COUNTRY_CARD_FEASIBILITY = (
     "Customs, transport planning, partner approval, and field validation required before use."
 )
@@ -1097,6 +1113,43 @@ def format_number(value) -> str:
     if isinstance(value, float):
         return f"{value:,.1f}"
     return str(value)
+
+
+def format_compact_metric_value(value) -> str:
+    """Compact KPI display for large simulated cost values."""
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return "—"
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return str(value)
+
+    absolute = abs(number)
+    if absolute >= 1_000_000:
+        return f"{number / 1_000_000:.2f}M"
+    if absolute >= 1_000:
+        return f"{number / 1_000:.1f}K"
+    if number == int(number):
+        return f"{int(number):,}"
+    return f"{number:,.2f}"
+
+
+def format_table_integer(value) -> str:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return "—"
+    try:
+        return f"{int(round(float(value))):,}"
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def format_table_decimal(value, decimals: int = 2) -> str:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return "—"
+    try:
+        return f"{float(value):,.{decimals}f}"
+    except (TypeError, ValueError):
+        return str(value)
 
 
 def format_datetime(value) -> str:
@@ -2786,62 +2839,219 @@ def _render_selected_zone_reallocation_cards(recommendations: list[dict]) -> Non
 
 def render_reallocation_recommendations_section(
     reallocation_data: dict | None,
+    optimized_data: dict | None,
     selected_zone_id: str | None = None,
 ) -> None:
-    """Render surplus-to-shortage transfer recommendations on the Operational Map."""
+    """Render baseline and optimized transfer recommendations on the Operational Map."""
     st.markdown(
         '<div class="subsection-header" style="margin-top: 1.25rem;">'
-        "Recommended Resource Transfers</div>",
+        "Resource Transfer Recommendations</div>",
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        '<div class="ops-note">Baseline Deterministic Recommendations</div>',
         unsafe_allow_html=True,
     )
 
     if reallocation_data is None:
         st.warning(BACKEND_UNAVAILABLE_MESSAGE)
-        return
+    else:
+        recommendations = reallocation_data.get("recommendations") or []
+        if not recommendations:
+            st.info("No transfer recommendations are available for the current shortage and surplus records.")
+        else:
+            zone_recommendations: list[dict] = []
+            if selected_zone_id:
+                zone_recommendations = [
+                    item for item in recommendations if item.get("to_zone_id") == selected_zone_id
+                ]
+                if zone_recommendations:
+                    st.markdown(
+                        '<div class="ops-note">Prioritized transfers for the selected destination zone.</div>',
+                        unsafe_allow_html=True,
+                    )
+                    _render_selected_zone_reallocation_cards(zone_recommendations)
+                else:
+                    st.info("No direct transfer recommendations were generated for this selected zone.")
 
-    recommendations = reallocation_data.get("recommendations") or []
-    if not recommendations:
-        st.info("No transfer recommendations are available for the current shortage and surplus records.")
+            has_fallback = any(
+                item.get("match_type") == "cross_country_fallback" for item in recommendations
+            )
+            expander_default = not selected_zone_id
+
+            with st.expander("View all baseline transfer recommendations", expanded=expander_default):
+                if has_fallback:
+                    st.markdown(
+                        f'<div class="reallocation-fallback-banner">{html.escape(CROSS_COUNTRY_EXPANDER_WARNING)}</div>',
+                        unsafe_allow_html=True,
+                    )
+                _render_compact_reallocation_table(recommendations)
+
+            method_note = (reallocation_data.get("method_note") or "").strip()
+            if method_note:
+                st.caption(method_note)
+
         st.markdown(
             f'<p class="zone-brief-transparency">{html.escape(REALLOCATION_TRANSPARENCY_NOTE)}</p>',
             unsafe_allow_html=True,
         )
+
+    render_optimized_transfer_plan_section(optimized_data)
+
+
+def _format_optimization_status(value) -> str:
+    return str(value or "unknown").replace("_", " ").title()
+
+
+def _compact_optimized_transfer_rows(recommendations: list[dict]) -> pd.DataFrame:
+    rows = []
+    for item in recommendations:
+        simulated_cost = item.get("simulated_transport_cost")
+        if simulated_cost is None:
+            simulated_cost = item.get("estimated_cost")
+        simulated_unit = item.get("simulated_unit_cost")
+        if simulated_unit is None:
+            simulated_unit = item.get("unit_transport_cost")
+        rows.append(
+            {
+                "source_zone_name": item.get("source_zone_name") or "—",
+                "destination_zone_name": item.get("destination_zone_name") or "—",
+                "resource_type": format_resource_label(item.get("resource_type")),
+                "optimized_quantity": format_table_integer(item.get("optimized_quantity")),
+                "simulated_transport_cost": format_table_decimal(simulated_cost),
+                "simulated_unit_cost": format_table_decimal(simulated_unit),
+                "match_type": _format_match_type(item.get("match_type")),
+                "confidence": _format_confidence_level(item.get("confidence")),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def _compact_demand_satisfaction_rows(summary: list[dict]) -> pd.DataFrame:
+    rows = []
+    for item in summary:
+        rows.append(
+            {
+                "zone_name": item.get("zone_name") or "—",
+                "resource_type": format_resource_label(item.get("resource_type")),
+                "requested_gap": item.get("requested_gap"),
+                "satisfied_quantity": item.get("satisfied_quantity"),
+                "remaining_gap": item.get("remaining_gap"),
+                "satisfaction_pct": item.get("satisfaction_pct"),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+_OPTIMIZED_TRANSFER_TABLE_LABELS = {
+    "source_zone_name": "From Zone",
+    "destination_zone_name": "To Zone",
+    "resource_type": "Resource",
+    "optimized_quantity": "Transfer Qty",
+    "simulated_transport_cost": "Simulated Cost",
+    "simulated_unit_cost": "Unit Cost",
+    "match_type": "Match Type",
+    "confidence": "Confidence",
+}
+
+_DEMAND_SATISFACTION_TABLE_LABELS = {
+    "zone_name": "Zone",
+    "resource_type": "Resource",
+    "requested_gap": "Requested Gap",
+    "satisfied_quantity": "Satisfied Qty",
+    "remaining_gap": "Remaining Gap",
+    "satisfaction_pct": "Satisfaction %",
+}
+
+
+def _render_optimized_transfer_table(recommendations: list[dict]) -> None:
+    if not recommendations:
         return
-
-    zone_recommendations: list[dict] = []
-    if selected_zone_id:
-        zone_recommendations = [
-            item for item in recommendations if item.get("to_zone_id") == selected_zone_id
-        ]
-        if zone_recommendations:
-            st.markdown(
-                '<div class="ops-note">Prioritized transfers for the selected destination zone.</div>',
-                unsafe_allow_html=True,
-            )
-            _render_selected_zone_reallocation_cards(zone_recommendations)
-        else:
-            st.info("No direct transfer recommendations were generated for this selected zone.")
-
-    has_fallback = any(
-        item.get("match_type") == "cross_country_fallback" for item in recommendations
+    st.dataframe(
+        rename_display_columns(
+            _compact_optimized_transfer_rows(recommendations),
+            extra_labels=_OPTIMIZED_TRANSFER_TABLE_LABELS,
+        ),
+        use_container_width=True,
+        hide_index=True,
     )
-    expander_default = not selected_zone_id
 
-    with st.expander("View all transfer recommendations", expanded=expander_default):
-        if has_fallback:
-            st.markdown(
-                f'<div class="reallocation-fallback-banner">{html.escape(CROSS_COUNTRY_EXPANDER_WARNING)}</div>',
-                unsafe_allow_html=True,
-            )
-        _render_compact_reallocation_table(recommendations)
 
-    method_note = (reallocation_data.get("method_note") or "").strip()
-    if method_note:
-        st.caption(method_note)
+def render_optimized_transfer_plan_section(optimized_data: dict | None) -> None:
+    """Render OR-Tools optimized transfer plan summary and recommendations table."""
     st.markdown(
-        f'<p class="zone-brief-transparency">{html.escape(REALLOCATION_TRANSPARENCY_NOTE)}</p>',
+        '<div class="subsection-header" style="margin-top: 1.5rem;">'
+        "Optimized Transfer Plan</div>",
         unsafe_allow_html=True,
     )
+    st.markdown(
+        f'<p class="ops-note">{html.escape(OPTIMIZED_TRANSFER_DESCRIPTION)}</p>',
+        unsafe_allow_html=True,
+    )
+
+    if optimized_data is None:
+        st.warning(OPTIMIZED_TRANSFER_UNAVAILABLE_MESSAGE)
+        return
+
+    status = (optimized_data.get("optimization_status") or "unknown").strip().lower()
+    message = (optimized_data.get("message") or "").strip()
+    recommendations = optimized_data.get("recommendations") or []
+    demand_summary = optimized_data.get("demand_satisfied_summary") or []
+
+    simulated_total = optimized_data.get("total_simulated_transport_cost")
+    if simulated_total is None:
+        simulated_total = optimized_data.get("total_estimated_cost", 0)
+
+    metric_cols = st.columns(4)
+    metric_cols[0].metric("Optimization Status", _format_optimization_status(status))
+    metric_cols[1].metric("Total Quantity Moved", format_number(optimized_data.get("total_quantity_moved")))
+    metric_cols[2].metric(
+        "Total Simulated Cost",
+        format_compact_metric_value(simulated_total),
+    )
+    metric_cols[3].metric("Optimized Transfers", format_number(optimized_data.get("total_recommendations")))
+
+    if status == "unavailable":
+        st.warning(
+            message
+            or "OR-Tools optimization is unavailable. Install ortools to enable this feature."
+        )
+    elif status == "infeasible":
+        st.warning(
+            message
+            or "No feasible optimized transfer plan could be found for the current constraints."
+        )
+    elif status in {"no_problem", "no_feasible_routes"} and not recommendations:
+        st.info(
+            message
+            or "No optimized transfers were generated for the current shortage and surplus records."
+        )
+
+    if recommendations:
+        _render_optimized_transfer_table(recommendations)
+
+        method_note = (optimized_data.get("method_note") or "").strip()
+        validation_note = (optimized_data.get("validation_note") or "").strip()
+        cost_note = (optimized_data.get("cost_note") or "").strip()
+        if method_note:
+            st.caption(method_note)
+        if validation_note:
+            st.caption(validation_note)
+        if cost_note:
+            st.caption(cost_note)
+        else:
+            st.caption(OPTIMIZED_TRANSFER_NOTE)
+
+    if demand_summary:
+        with st.expander("Demand Satisfaction Summary", expanded=False):
+            st.dataframe(
+                rename_display_columns(
+                    _compact_demand_satisfaction_rows(demand_summary),
+                    extra_labels=_DEMAND_SATISFACTION_TABLE_LABELS,
+                ),
+                use_container_width=True,
+                hide_index=True,
+            )
 
 
 def _zone_id_from_map_selection(selection) -> str | None:
@@ -2943,7 +3153,12 @@ def render_map_tab(base_url: str) -> None:
 
     selected_zone_id = zone_lookup[selected_label] if selected_label else None
     reallocation_data = get_reallocation_recommendations(base_url)
-    render_reallocation_recommendations_section(reallocation_data, selected_zone_id)
+    optimized_data = get_optimized_transfers(base_url)
+    render_reallocation_recommendations_section(
+        reallocation_data,
+        optimized_data,
+        selected_zone_id,
+    )
 
     if not selected_label:
         return

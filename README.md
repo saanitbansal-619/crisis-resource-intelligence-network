@@ -347,6 +347,7 @@ Key routes:
 - `GET /mismatches/critical` — Critical shortages
 - `GET /mismatches/surplus` — Surplus resources
 - `GET /mismatches/reallocation-recommendations` — Deterministic transfer recommendations
+- `GET /mismatches/optimized-transfers` — OR-Tools optimized transfer plan (simulated cost units)
 
 Examples (local):
 
@@ -354,6 +355,7 @@ Examples (local):
 - http://127.0.0.1:8001/reports/situation-report
 - http://127.0.0.1:8001/reports/rag-zone-context/ZONE001
 - http://127.0.0.1:8001/mismatches/reallocation-recommendations
+- http://127.0.0.1:8001/mismatches/optimized-transfers
 
 Examples (hosted):
 
@@ -361,6 +363,7 @@ Examples (hosted):
 - https://crisis-resource-api.onrender.com/reports/situation-report
 - https://crisis-resource-api.onrender.com/reports/rag-zone-context/ZONE001
 - https://crisis-resource-api.onrender.com/mismatches/reallocation-recommendations
+- https://crisis-resource-api.onrender.com/mismatches/optimized-transfers
 
 ## Methodology
 
@@ -390,6 +393,16 @@ SQL query templates for shortages, surpluses, and summaries live in `analytics/q
 - Each recommendation includes quantity, source zone, destination zone, confidence level, match type, and a feasibility note.
 
 The Operational Map dashboard shows prioritized transfers for the selected destination zone, with an expander for all recommendations.
+
+### OR-Tools optimized transfer planning
+
+`analytics/optimization_engine.py` complements the deterministic engine with a constrained minimum-cost transport model using Google OR-Tools.
+
+- Surplus zones are supply nodes; shortage zones are demand nodes, matched by `resource_type`
+- The solver minimizes **simulated transport cost** (relative cost units) while prioritizing demand fulfillment via unmet-demand penalties
+- Same-country routes use lower simulated unit costs; cross-country fallback routes use higher costs
+- Optimization cost is based on simulated distance and logistics assumptions for demonstration purposes. Values are relative cost units, not real-world USD estimates.
+- Results are exposed at `GET /mismatches/optimized-transfers` and shown in the dashboard **Optimized Transfer Plan** section
 
 ### Overall Situation Report
 
@@ -443,8 +456,19 @@ This is a **portfolio prototype**, not a production emergency response system:
 | Week 6 Part 1 | Zone briefing endpoint; map-based template operational briefs with PDF/copy export |
 | Week 6 Part 2 | pgvector RAG corpus, hybrid retrieval, optional Ollama AI briefings, demo health check |
 | Extensions | Resource reallocation recommendations; Overall Situation Report; dashboard polish; Render deployment |
+| Current enhancement | Google OR-Tools optimized transfer planning (`GET /mismatches/optimized-transfers`) |
 
 Possible next steps: ML shortage-risk prediction, scheduled ingestion, and cloud hardening beyond the current portfolio demo.
+
+## Current Enhancement: OR-Tools Optimized Transfers
+
+The **Optimized Transfer Plan** complements baseline deterministic reallocation recommendations:
+
+- **Google OR-Tools** solves a minimum-cost transport problem with supply, demand, and non-negativity constraints
+- **Same-country routes** receive lower simulated unit costs; **cross-country fallback** routes use higher costs
+- **Distance-based cost** uses zone coordinates when available; otherwise a simple simulated distance is applied
+- Optimization cost is based on simulated distance and logistics assumptions for demonstration purposes. Values are relative cost units, not real-world USD estimates.
+- **Recommendations require human validation** before operational dispatch; the optimizer does not replace field coordinator judgment
 
 ## Project Structure
 
@@ -452,7 +476,7 @@ Possible next steps: ML shortage-risk prediction, scheduled ingestion, and cloud
 CrisisResourceIntel/
 ├── ingestion/       # API fetchers, clean_reliefweb.py, clean_gdacs.py
 ├── database/        # Schema, loaders, sample resource generator
-├── analytics/       # Mismatch engine, reallocation recommendations, SQL queries
+├── analytics/       # Mismatch engine, reallocation, OR-Tools optimization, SQL queries
 ├── backend/         # FastAPI application
 ├── dashboard/       # Streamlit UI
 ├── scripts/         # Demo health check and utilities

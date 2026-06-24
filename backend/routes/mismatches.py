@@ -7,6 +7,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from backend.database import get_db, rows_to_dicts
+from analytics.optimization_engine import generate_optimized_transfers_from_mismatches
 from analytics.reallocation_engine import generate_recommendations_from_mismatches
 
 router = APIRouter(prefix="/mismatches", tags=["mismatches"])
@@ -141,3 +142,17 @@ def get_reallocation_recommendations(db: Session = Depends(get_db)) -> dict:
         )
     )
     return generate_recommendations_from_mismatches(rows_to_dicts(result))
+
+
+@router.get("/optimized-transfers")
+def get_optimized_transfers(db: Session = Depends(get_db)) -> dict:
+    """Return OR-Tools minimum-cost transfer plan under supply and demand constraints."""
+    result = db.execute(
+        text(
+            _mismatch_base_query()
+            + """
+            ORDER BY m.mismatch_score DESC
+            """
+        )
+    )
+    return generate_optimized_transfers_from_mismatches(rows_to_dicts(result))
