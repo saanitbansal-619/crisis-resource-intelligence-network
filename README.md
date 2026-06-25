@@ -59,17 +59,47 @@ This is a **portfolio prototype**, not a production emergency response system.
 
 ## Architecture
 
-```
-ReliefWeb API ──┐
-                ├──> Ingestion ──> Raw Storage ──> Cleaning ──> PostgreSQL
-GDACS RSS    ───┘                                              │
-                                                               ├──> Mismatch scoring
-                                                               ├──> Transfer recommendation engine
-                                                               ├──> FastAPI (REST)
-                                                               ├──> Hybrid RAG retrieval (pgvector)
-                                                               ├──> Optional local Ollama AI briefing
-                                                               └──> Streamlit dashboard
-                                                                    (situation report + operational map)
+```text
+                    ┌─────────────────┐        ┌─────────────────┐
+                    │    ReliefWeb    │        │      GDACS      │
+                    │      API        │        │    RSS Feeds    │
+                    └────────┬────────┘        └────────┬────────┘
+                             │                          │
+                             └────────────┬─────────────┘
+                                          │
+                                 ┌────────▼────────┐
+                                 │   Ingestion     │
+                                 │  ETL Pipeline   │
+                                 └────────┬────────┘
+                                          │
+                                 ┌────────▼────────┐
+                                 │  PostgreSQL +   │
+                                 │    pgvector     │
+                                 └─────┬─────┬─────┘
+                                       │     │
+                         ┌─────────────┘     └─────────────┐
+                         │                                 │
+                 ┌───────▼────────┐              ┌────────▼────────┐
+                 │ Mismatch       │              │ Retrieval-Based │
+                 │ Scoring Engine │              │ Crisis Context  │
+                 └───────┬────────┘              └────────┬────────┘
+                         │                                │
+                 ┌───────▼────────┐              ┌────────▼────────┐
+                 │ OR-Tools       │              │ Local Ollama    │
+                 │ Optimization   │              │ AI Briefings    │
+                 └───────┬────────┘              │ Optional        │
+                         │                       └────────┬────────┘
+                         └──────────────┬────────────────┘
+                                        │
+                               ┌────────▼────────┐
+                               │ FastAPI Backend │
+                               └────────┬────────┘
+                                        │
+                               ┌────────▼────────┐
+                               │ Streamlit UI    │
+                               │ Maps • Reports  │
+                               │ Recommendations │
+                               └─────────────────┘
 ```
 
 End-to-end pipeline:
