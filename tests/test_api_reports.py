@@ -91,3 +91,44 @@ def test_optimized_transfers_payload_shapes(client: TestClient) -> None:
     assert isinstance(body.get("recommendations"), list)
     assert body.get("total_quantity_moved", 0) >= 0
     assert body.get("total_simulated_transport_cost", 0) >= 0
+
+
+def test_shortage_risk_forecast_response_shape(client: TestClient) -> None:
+    response = client.get("/reports/shortage-risk-forecast")
+    assert response.status_code == 200
+
+    body = response.json()
+    # Top-level keys present whether or not the model/data are available.
+    assert "status" in body
+    assert "model_available" in body
+    assert "model_note" in body
+    assert "feature_note" in body
+    assert "forecasts" in body
+    assert isinstance(body["forecasts"], list)
+    assert "summary" in body
+
+    valid_levels = {"low", "medium", "high", "critical"}
+
+    if body.get("model_available") and body["forecasts"]:
+        assert body["status"] == "ok"
+        item = body["forecasts"][0]
+        expected = {
+            "zone_name",
+            "country",
+            "resource_type",
+            "current_shortage_gap",
+            "fulfillment_ratio",
+            "predicted_48h_risk",
+            "predicted_72h_risk",
+            "confidence",
+        }
+        assert expected <= set(item)
+        for forecast in body["forecasts"]:
+            assert forecast["predicted_48h_risk"] in valid_levels
+            assert forecast["predicted_72h_risk"] in valid_levels
+            if forecast.get("confidence") is not None:
+                assert 0.0 <= forecast["confidence"] <= 1.0
+    else:
+        # Graceful fallback path must explain why it is unavailable.
+        assert body["status"] in {"unavailable", "no_data"}
+        assert isinstance(body.get("message", ""), str)

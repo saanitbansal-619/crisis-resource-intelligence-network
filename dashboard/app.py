@@ -1042,6 +1042,10 @@ def get_situation_report(base_url: str) -> dict | None:
     return fetch_json("/reports/situation-report", base_url)
 
 
+def get_shortage_risk_forecast(base_url: str) -> dict | None:
+    return fetch_json("/reports/shortage-risk-forecast", base_url)
+
+
 RAG_UNAVAILABLE_MESSAGE = (
     "Retrieved crisis context is unavailable because no RAG chunks were found in the database."
 )
@@ -2106,7 +2110,7 @@ def render_hero_header() -> None:
         <div class="hero-card">
             <div class="hero-eyebrow">CRISIS RESOURCE INTELLIGENCE NETWORK</div>
             <div class="hero-title">Humanitarian Crisis Resource Intelligence Dashboard</div>
-            <p class="hero-subtitle">Crisis monitoring, resource gap analysis, transfer recommendations, and AI-assisted operational briefings</p>
+            <p class="hero-subtitle">Optimization-driven humanitarian resource intelligence with ML-based shortage-risk forecasting and AI-assisted briefing support</p>
         </div>
         """,
         unsafe_allow_html=True,
@@ -3181,6 +3185,172 @@ def render_map_tab(base_url: str) -> None:
         render_brief_secondary_actions(briefing, zone_id, rag_context)
 
 
+RISK_FORECAST_PROTOTYPE_NOTE = (
+    "Prototype forecast using simulated/proxy operational labels. It estimates 48-72 hour "
+    "shortage severity to support early planning and complements the OR-Tools optimization "
+    "plan. It is not an automated decision-maker."
+)
+RISK_LEVEL_DISPLAY = {
+    "critical": "Critical",
+    "high": "High",
+    "medium": "Medium",
+    "low": "Low",
+}
+RISK_LEVEL_COLORS = {
+    "Critical": COLOR_CRITICAL,
+    "High": COLOR_SEVERE,
+    "Medium": COLOR_SECONDARY,
+    "Low": COLOR_SURPLUS,
+}
+RISK_LEVEL_ORDER = ["Critical", "High", "Medium", "Low"]
+
+
+def _format_risk_level(value) -> str:
+    return RISK_LEVEL_DISPLAY.get(str(value or "").strip().lower(), str(value or "—").title())
+
+
+RISK_FORECAST_COLUMN_LABELS = {
+    "zone_name": "Zone",
+    "country": "Country",
+    "resource_type": "Resource",
+    "current_shortage_gap": "Shortage Gap",
+    "fulfillment_ratio": "Fulfillment",
+    "predicted_48h_risk": "48h Risk",
+    "predicted_72h_risk": "72h Risk",
+    "confidence": "Confidence",
+}
+
+
+def _risk_forecast_table(forecasts: list[dict]) -> pd.DataFrame:
+    rows = []
+    for item in forecasts:
+        confidence = item.get("confidence")
+        fulfillment = item.get("fulfillment_ratio")
+        rows.append(
+            {
+                "zone_name": item.get("zone_name") or "—",
+                "country": item.get("country") or "—",
+                "resource_type": format_resource_label(item.get("resource_type")),
+                "current_shortage_gap": item.get("current_shortage_gap"),
+                "fulfillment_ratio": f"{float(fulfillment) * 100:.0f}%" if fulfillment is not None else "—",
+                "predicted_48h_risk": _format_risk_level(item.get("predicted_48h_risk")),
+                "predicted_72h_risk": _format_risk_level(item.get("predicted_72h_risk")),
+                "confidence": f"{float(confidence) * 100:.0f}%" if confidence is not None else "—",
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def render_risk_forecast_tab(base_url: str) -> None:
+    st.markdown('<div class="section-header">Shortage Risk Forecast</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="ops-note">Advanced ML forecasting layer (prototype) &mdash; complements the '
+        "OR-Tools optimization plan and deterministic analytics.</div>",
+        unsafe_allow_html=True,
+    )
+
+    data = get_shortage_risk_forecast(base_url)
+    if data is None:
+        show_backend_warning()
+        return
+
+    if not data.get("model_available"):
+        st.info(
+            data.get("message")
+            or "Shortage-risk forecasting is currently unavailable. "
+            "Baseline analytics and the optimization plan remain available."
+        )
+        st.markdown(
+            f'<p class="zone-brief-transparency">{html.escape(RISK_FORECAST_PROTOTYPE_NOTE)}</p>',
+            unsafe_allow_html=True,
+        )
+        return
+
+    forecasts = data.get("forecasts") or []
+    summary = data.get("summary") or {}
+    by_level = summary.get("by_predicted_48h_risk") or {}
+
+    if not forecasts:
+        st.info("No shortage-risk forecasts were generated for the current dataset.")
+        st.markdown(
+            f'<p class="zone-brief-transparency">{html.escape(RISK_FORECAST_PROTOTYPE_NOTE)}</p>',
+            unsafe_allow_html=True,
+        )
+        return
+
+    metric_cols = st.columns(4)
+    metric_cols[0].metric("Zones x Resources Scored", format_number(summary.get("total_forecasts")))
+    metric_cols[1].metric("High or Critical (48h)", format_number(summary.get("high_or_critical_count")))
+    metric_cols[2].metric("Critical (48h)", format_number(by_level.get("critical")))
+    metric_cols[3].metric("High (48h)", format_number(by_level.get("high")))
+
+    high_critical = [
+        item
+        for item in forecasts
+        if str(item.get("predicted_48h_risk", "")).lower() in {"high", "critical"}
+    ]
+
+    st.markdown(
+        '<div class="subsection-header" style="margin-top: 1rem;">Forecasted High / Critical Risk</div>',
+        unsafe_allow_html=True,
+    )
+    if high_critical:
+        st.dataframe(
+            rename_display_columns(
+                _risk_forecast_table(high_critical),
+                extra_labels=RISK_FORECAST_COLUMN_LABELS,
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+    else:
+        st.info("No high or critical shortage risk is forecasted in the current dataset.")
+
+    counts_df = pd.DataFrame(
+        [
+            {"risk_level": level, "count": int(by_level.get(level.lower(), 0))}
+            for level in RISK_LEVEL_ORDER
+        ]
+    )
+    if counts_df["count"].sum() > 0:
+        render_content_card_start()
+        fig = px.bar(
+            counts_df,
+            x="risk_level",
+            y="count",
+            color="risk_level",
+            category_orders={"risk_level": RISK_LEVEL_ORDER},
+            color_discrete_map=RISK_LEVEL_COLORS,
+        )
+        fig.update_layout(showlegend=False)
+        apply_chart_layout(
+            fig,
+            "Predicted 48h Risk Counts by Level",
+            x_title="Risk Level",
+            y_title="Forecasts",
+        )
+        st.plotly_chart(fig, use_container_width=True)
+        render_content_card_end()
+
+    with st.expander("View all shortage-risk forecasts", expanded=False):
+        st.dataframe(
+            rename_display_columns(
+                _risk_forecast_table(forecasts),
+                extra_labels=RISK_FORECAST_COLUMN_LABELS,
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    model_note = (data.get("model_note") or "").strip()
+    if model_note:
+        st.caption(model_note)
+    st.markdown(
+        f'<p class="zone-brief-transparency">{html.escape(RISK_FORECAST_PROTOTYPE_NOTE)}</p>',
+        unsafe_allow_html=True,
+    )
+
+
 def main() -> None:
     inject_styles()
     _init_situation_report_state()
@@ -3193,6 +3363,7 @@ def main() -> None:
         "Available Surplus",
         "Resource Balance",
         "Operational Map",
+        "Shortage Risk Forecast",
     ])
 
     with tabs[0]:
@@ -3205,6 +3376,8 @@ def main() -> None:
         _safe_render_tab(render_summary_tab, api_base)
     with tabs[4]:
         _safe_render_tab(render_map_tab, api_base)
+    with tabs[5]:
+        _safe_render_tab(render_risk_forecast_tab, api_base)
 
 
 if __name__ == "__main__":

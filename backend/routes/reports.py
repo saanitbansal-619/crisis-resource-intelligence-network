@@ -14,6 +14,17 @@ from analytics.reallocation_engine import (
     generate_recommendations_from_mismatches,
 )
 from backend.database import get_db, row_to_dict, rows_to_dicts
+from ml_forecasting.feature_builder import (
+    FEATURE_NOTE as SHORTAGE_RISK_FEATURE_NOTE,
+    FEATURE_QUERY,
+    RISK_LEVELS,
+    build_raw_records,
+)
+from ml_forecasting.predict_risk import (
+    METHOD_NOTE as SHORTAGE_RISK_METHOD_NOTE,
+    ModelUnavailableError,
+    predict_shortage_risk,
+)
 from rag.llm_briefing import (
     OllamaModelNotFoundError,
     OllamaUnavailableError,
@@ -807,4 +818,113 @@ def get_ai_zone_briefing(zone_id: str, db: Session = Depends(get_db)) -> dict:
         "transparency_note": ai_result.get("transparency_note"),
         "retrieved_context_used": context_used,
         "rag_context_unavailable": rag_unavailable,
+    }
+
+
+SHORTAGE_RISK_UNAVAILABLE_NOTE = (
+    "Shortage-risk forecasting is a prototype layer using simulated/proxy labels. "
+    "It is currently unavailable; the OR-Tools optimization plan and deterministic "
+    "analytics remain available."
+)
+
+
+def _load_forecast_records(db: Session) -> list[dict]:
+    """Load raw feature records for forecasting using the shared FEATURE_QUERY."""
+    rows = rows_to_dicts(db.execute(text(FEATURE_QUERY)))
+    return build_raw_records(rows)
+
+
+def _summarize_forecasts(forecasts: list[dict]) -> dict:
+    by_level = {level: 0 for level in RISK_LEVELS}
+    for item in forecasts:
+        level = item.get("predicted_48h_risk")
+        if level in by_level:
+            by_level[level] += 1
+    high_or_critical = by_level.get("high", 0) + by_level.get("critical", 0)
+    return {
+        "total_forecasts": len(forecasts),
+        "by_predicted_48h_risk": by_level,
+        "high_or_critical_count": high_or_critical,
+    }
+
+
+@router.get("/shortage-risk-forecast")
+def get_shortage_risk_forecast(db: Session = Depends(get_db)) -> dict:
+    """Return prototype 48-72 hour shortage-risk forecasts for crisis zones.
+
+    Gracefully reports unavailability when the trained model or feature data is
+    missing, instead of raising a server error.
+    """
+    base_response = {
+        "status": "unavailable",
+        "model_available": False,
+        "model_note": SHORTAGE_RISK_METHOD_NOTE,
+        "feature_note": SHORTAGE_RISK_FEATURE_NOTE,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "summary": _summarize_forecasts([]),
+        "forecasts": [],
+    }
+
+    try:
+        records = _load_forecast_records(db)
+    except Exception:
+        base_response["message"] = (
+            "Forecast feature data is unavailable (database tables or sample data missing). "
+            + SHORTAGE_RISK_UNAVAILABLE_NOTE
+        )
+        return base_response
+
+    if not records:
+        base_response["status"] = "no_data"
+        base_response["message"] = (
+            "No mismatch records are available to forecast. " + SHORTAGE_RISK_UNAVAILABLE_NOTE
+        )
+        return base_response
+
+    try:
+        predictions = predict_shortage_risk(records)
+    except ModelUnavailableError as exc:
+        base_response["message"] = (
+            f"{exc} To enable forecasts, train the model with: "
+            "python -m ml_forecasting.train_model"
+        )
+        return base_response
+    except Exception as exc:  # pragma: no cover - defensive
+        base_response["message"] = (
+            f"Shortage-risk forecasting failed: {exc}. " + SHORTAGE_RISK_UNAVAILABLE_NOTE
+        )
+        return base_response
+
+    forecasts = [
+        {
+            "zone_name": item.get("zone_name"),
+            "country": item.get("country"),
+            "resource_type": item.get("resource_type"),
+            "current_shortage_gap": item.get("current_shortage_gap"),
+            "fulfillment_ratio": item.get("fulfillment_ratio"),
+            "predicted_48h_risk": item.get("predicted_48h_risk"),
+            "predicted_72h_risk": item.get("predicted_72h_risk"),
+            "confidence": item.get("confidence"),
+            "model_note": item.get("model_note"),
+        }
+        for item in predictions
+    ]
+
+    risk_order = {level: index for index, level in enumerate(RISK_LEVELS)}
+    forecasts.sort(
+        key=lambda item: (
+            risk_order.get(item.get("predicted_48h_risk"), 0),
+            item.get("current_shortage_gap") or 0,
+        ),
+        reverse=True,
+    )
+
+    return {
+        "status": "ok",
+        "model_available": True,
+        "model_note": SHORTAGE_RISK_METHOD_NOTE,
+        "feature_note": SHORTAGE_RISK_FEATURE_NOTE,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "summary": _summarize_forecasts(forecasts),
+        "forecasts": forecasts,
     }
