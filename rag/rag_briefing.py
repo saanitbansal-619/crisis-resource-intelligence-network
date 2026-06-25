@@ -141,6 +141,32 @@ def _build_rag_summary(
     return " ".join(parts)
 
 
+def build_keyword_fallback_context(
+    zone: dict,
+    retrieved_context: list[dict] | None = None,
+    top_k: int = 5,
+) -> dict:
+    """Build keyword-fallback context from already-retrieved chunks.
+
+    This helper does not require Ollama or live retrieval. It mirrors the
+    hosted-mode (keyword fallback) shape used by ``generate_rag_context_for_zone``
+    so the fallback behavior can be exercised with sample data.
+    """
+    normalized = _normalize_retrieved_context(retrieved_context or [])
+    rag_summary = _build_rag_summary(
+        zone,
+        normalized,
+        top_k=top_k,
+        retrieval_mode="keyword_fallback",
+    )
+    return {
+        "retrieved_context": normalized,
+        "rag_summary": rag_summary,
+        "retrieval_mode": "keyword_fallback",
+        "is_fallback": True,
+    }
+
+
 def generate_rag_context_for_zone(
     zone: dict,
     priority_needs: list | None = None,

@@ -514,8 +514,24 @@ CrisisResourceIntel/
 ├── rag/             # Corpus, embeddings, hybrid retrieval, LLM briefing
 ├── data/            # Raw, processed, and sample data
 ├── docs/            # Architecture and dev notes
-└── tests/           # Test suite (future)
+└── tests/           # pytest suite for API, analytics, optimization, and config checks
 ```
+
+## Running Tests
+
+```bash
+pytest
+```
+
+The suite is lightweight and runs locally without external APIs, Render services, or Ollama:
+
+- **API tests** use FastAPI's `TestClient` (root and `/health` always run; `/reports/overview` and `/mismatches/optimized-transfers` skip gracefully when PostgreSQL or sample data is unavailable).
+- **Analytics tests** cover the mismatch and reallocation engines as pure functions (shortage/surplus/stable status, urgency weighting, same-country vs. cross-country confidence, resource-type matching).
+- **Optimization tests** validate the OR-Tools engine result shape and constraints, skipping if `ortools` is not installed.
+- **RAG fallback tests** exercise keyword/hosted-mode context building without Ollama.
+- **Config tests** verify API base URL resolution and that database URLs are masked so passwords are never exposed.
+
+Database-backed tests print a clear skip message when PostgreSQL is not reachable.
 
 ## License
 

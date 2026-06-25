@@ -21,7 +21,10 @@ try:
     from ortools.linear_solver import pywraplp
 
     ORTOOLS_AVAILABLE = True
-except ImportError:  # pragma: no cover - graceful degradation when ortools missing
+except (ImportError, OSError):  # pragma: no cover - graceful degradation
+    # ImportError: ortools not installed.
+    # OSError (e.g. WinError 127): ortools installed but its native DLLs
+    # failed to load in this environment. Either way, degrade gracefully.
     ORTOOLS_AVAILABLE = False
     pywraplp = None  # type: ignore[assignment,misc]
 
