@@ -5,14 +5,16 @@ flowchart LR
     ING --> PG[(PostgreSQL + pgvector)]
 
     PG --> MISMATCH[Mismatch Scoring Engine]
+    PG --> FORECAST[XGBoost Shortage-Risk Forecasting]
     PG --> RETRIEVAL[Retrieval-Based Crisis Context]
     PG --> API[FastAPI Backend]
 
-    MISMATCH --> OPT[OR-Tools Optimization Engine]
+    MISMATCH --> OPT[OR-Tools Transport Optimization]
     OPT --> API
+    FORECAST --> API
     RETRIEVAL --> API
 
-    OLLAMA[Local Ollama<br/>Optional Semantic Retrieval + AI Briefings] -. local demo only .-> RETRIEVAL
+    OLLAMA[Local Ollama<br/>Optional AI Briefings] -. local demo only .-> RETRIEVAL
     OLLAMA -. local demo only .-> API
 
     API --> DASH[Streamlit Dashboard]
@@ -20,4 +22,5 @@ flowchart LR
     DASH --> KPIS[KPI Overview]
     DASH --> MAPS[Operational Map]
     DASH --> REPORTS[Situation Reports & Zone Briefings]
-    DASH --> RECS[Baseline + Optimized Transfer Plans]
+    DASH --> TRANSFERS[Optimized Transfer Plans]
+    DASH --> RISKS[Shortage-Risk Forecasts]

@@ -8,7 +8,9 @@
 
 Humanitarian crises create uneven demand for food, water, shelter, medical supplies, and personnel. Public sources such as ReliefWeb and GDACS publish alerts and situation reports, but turning that information into actionable resource intelligence requires ingestion, normalization, analytics, and accessible decision-support tooling.
 
-This project is an **optimization-driven humanitarian resource intelligence platform**. It ingests public crisis data, stores it in PostgreSQL, scores supply-demand mismatches using simulated NGO resource data, and turns that into actionable plans: deterministic transfer recommendations, a **Google OR-Tools optimized transfer plan**, and a **lightweight ML shortage-risk forecasting layer** — all surfaced through a FastAPI-backed Streamlit dashboard. It additionally provides an overall situation report, hybrid RAG retrieval over ReliefWeb/GDACS records, and optional local AI-assisted briefings via Ollama.
+Crisis Resource Intelligence Network is an **optimization-driven humanitarian intelligence platform** that integrates ReliefWeb/GDACS crisis-data ingestion, PostgreSQL-backed analytics, FastAPI endpoints, **OR-Tools transport optimization**, **XGBoost shortage-risk forecasting**, and an interactive Streamlit operations dashboard.
+
+It scores supply-demand mismatches from simulated NGO resource data, recommends how surplus could be transferred to shortages under cost and capacity constraints, and forecasts which shortages are likely to escalate over the next 48–72 hours. **AI-assisted briefing support and retrieval-based crisis context (RAG/Ollama) are included as supporting analyst workflows**, not the main headline.
 
 ## Portfolio Note
 
@@ -17,6 +19,12 @@ This is a **portfolio prototype**, not a production emergency response system.
 - **Public crisis context** comes from ReliefWeb and GDACS.
 - **Operational inventory and resource request data are simulated** because real NGO supply data is generally not public.
 - Transfer recommendations and AI briefings are decision-support outputs that require human review before any operational use.
+
+## Portfolio Highlights
+
+- Built and deployed an optimization-driven humanitarian intelligence platform integrating ReliefWeb/GDACS ingestion, PostgreSQL, FastAPI, OR-Tools transport optimization, and XGBoost shortage-risk forecasting through an interactive Streamlit dashboard.
+- Implemented supply-demand mismatch scoring and optimized surplus-to-shortage transfer recommendations, generating 10 optimized routes and 9,760 simulated units moved while minimizing 19.54M relative transport-cost units.
+- Added an ML-based 48–72 hour shortage-risk forecast using proxy operational labels derived from shortage gaps, fulfillment ratios, urgency scores, and mismatch severity.
 
 ## Live Demo
 
@@ -35,19 +43,13 @@ This is a **portfolio prototype**, not a production emergency response system.
 
 ## Key Features
 
-- ReliefWeb and GDACS ingestion
-- PostgreSQL + pgvector storage
-- Simulated NGO inventory and resource requests
-- Supply-demand mismatch scoring
-- Resource reallocation recommendations
-- OR-Tools transfer optimization (minimum simulated transport cost)
-- ML-based shortage-risk classification (low/medium/high/critical, proxy labels)
-- 48–72 hour shortage escalation forecast
-- FastAPI backend
-- Streamlit dashboard
-- Operational map and zone briefings
-- Hybrid RAG retrieval
-- Optional local Ollama AI-assisted briefings
+- ReliefWeb API and GDACS RSS crisis-data ingestion
+- PostgreSQL-backed crisis, resource, inventory, request, and mismatch records (with pgvector)
+- Supply-demand mismatch scoring for shortage and surplus detection
+- OR-Tools optimized surplus-to-shortage transfer recommendations
+- XGBoost shortage-risk forecasting for 48–72 hour escalation risk
+- Streamlit dashboard with KPI summaries, maps, reports, transfer plans, and forecast tables
+- Retrieval-based crisis context and local Ollama-assisted briefing drafts (supporting analyst workflow)
 - Demo health check script
 
 ## Tech Stack
@@ -68,11 +70,38 @@ This is a **portfolio prototype**, not a production emergency response system.
 
 ## Architecture
 
-![Architecture Diagram](docs/architecture/architecture.svg)
+```mermaid
+flowchart LR
+    RW[ReliefWeb API] --> ING[Ingestion / ETL Pipeline]
+    GD[GDACS RSS Feeds] --> ING
 
-This diagram shows the end-to-end system flow from public crisis-data ingestion through PostgreSQL-backed analytics, retrieval, optimization, FastAPI endpoints, and the Streamlit operations dashboard. Local Ollama support is optional and used for local semantic retrieval and AI-assisted briefing drafts.
+    ING --> PG[(PostgreSQL + pgvector)]
 
-The diagram source lives in [`docs/architecture/architecture.mmd`](docs/architecture/architecture.mmd). To regenerate the rendered assets with the [Mermaid CLI](https://github.com/mermaid-js/mermaid-cli):
+    PG --> MISMATCH[Mismatch Scoring Engine]
+    PG --> FORECAST[XGBoost Shortage-Risk Forecasting]
+    PG --> RETRIEVAL[Retrieval-Based Crisis Context]
+    PG --> API[FastAPI Backend]
+
+    MISMATCH --> OPT[OR-Tools Transport Optimization]
+    OPT --> API
+    FORECAST --> API
+    RETRIEVAL --> API
+
+    OLLAMA[Local Ollama<br/>Optional AI Briefings] -. local demo only .-> RETRIEVAL
+    OLLAMA -. local demo only .-> API
+
+    API --> DASH[Streamlit Dashboard]
+
+    DASH --> KPIS[KPI Overview]
+    DASH --> MAPS[Operational Map]
+    DASH --> REPORTS[Situation Reports & Zone Briefings]
+    DASH --> TRANSFERS[Optimized Transfer Plans]
+    DASH --> RISKS[Shortage-Risk Forecasts]
+```
+
+This diagram shows the end-to-end system flow from public crisis-data ingestion through PostgreSQL-backed analytics, mismatch scoring, OR-Tools transport optimization, XGBoost shortage-risk forecasting, retrieval, FastAPI endpoints, and the Streamlit operations dashboard. Local Ollama support is optional and used for local semantic retrieval and AI-assisted briefing drafts.
+
+The diagram source lives in [`docs/architecture/architecture.mmd`](docs/architecture/architecture.mmd). To regenerate static image assets with the [Mermaid CLI](https://github.com/mermaid-js/mermaid-cli):
 
 ```bash
 npx @mermaid-js/mermaid-cli -i docs/architecture/architecture.mmd -o docs/architecture/architecture.svg
@@ -85,10 +114,11 @@ End-to-end pipeline:
 ReliefWeb/GDACS ingestion
   → PostgreSQL storage
   → mismatch scoring
-  → transfer recommendation engine
-  → hybrid RAG retrieval with pgvector
-  → optional local Ollama AI briefing
-  → dashboard situation report and operational map
+  → OR-Tools transport optimization
+  → XGBoost shortage-risk forecasting
+  → hybrid RAG retrieval with pgvector (supporting)
+  → optional local Ollama AI briefing (supporting)
+  → dashboard KPIs, maps, transfer plans, and risk forecasts
 ```
 
 RAG pipeline:
@@ -120,7 +150,7 @@ ReliefWeb/GDACS crisis records
 - 24 zone/resource shortage-risk forecasts generated by the ML layer
 - 8 zone/resource combinations forecast at high or critical 48-hour shortage risk
 
-Statistics reflect the deployed portfolio/demo dataset and may vary when the ingestion pipeline is rerun.
+Statistics reflect the deployed portfolio/demo dataset and may vary when the ingestion pipeline or forecasting workflow is rerun.
 
 ## Dashboard Screenshots
 
@@ -357,8 +387,8 @@ Local default for `API_BASE_URL`: `http://127.0.0.1:8001`.
 |--------|-------------|
 | `/crises` | ReliefWeb reports and GDACS alerts |
 | `/resources` | Zones, organizations, inventory, requests |
-| `/mismatches` | Shortage/surplus analytics with filters and reallocation recommendations |
-| `/reports` | KPI overview, zone briefings, situation report, RAG context, AI briefings |
+| `/mismatches` | Shortage/surplus analytics, reallocation recommendations, and OR-Tools optimized transfers |
+| `/reports` | KPI overview, situation report, shortage-risk forecast, zone briefings, and supporting RAG context / AI briefings |
 
 Key routes:
 
@@ -491,6 +521,10 @@ This is a **portfolio prototype**, not a production emergency response system:
 - AI-assisted briefings are **drafts** and should be reviewed before any operational use
 - The system does not make final operational decisions and should not be presented as production-ready
 
+### Data Limitations and Real-World Deployment
+
+This prototype uses real public crisis data from ReliefWeb and GDACS, combined with simulated operational inventory, request, and transport-cost data. Real NGO inventory and field-request data is usually private because it may reveal sensitive stock levels, warehouse locations, medical supplies, and security-relevant logistics constraints. In a production deployment, the simulated operational tables could be replaced with authenticated NGO ERP, warehouse, or logistics APIs. Key challenges would include data quality, delayed field reporting, duplicate requests, inconsistent item naming, inventory synchronization, access control, customs/security constraints, road closures, and delivery-capacity limits.
+
 ## Development Timeline
 
 | Phase | Delivered |
@@ -506,16 +540,26 @@ This is a **portfolio prototype**, not a production emergency response system:
 | Enhancement | Google OR-Tools optimized transfer planning (`GET /mismatches/optimized-transfers`) |
 | Current enhancement | ML shortage-risk forecasting layer (`GET /reports/shortage-risk-forecast`) |
 
-Possible next steps: scheduled ingestion, time-series shortage forecasting, and cloud hardening beyond the current portfolio demo.
+## Future Work
+
+Beyond the current portfolio demo, production-oriented next steps would focus on:
+
+- Real NGO ERP / logistics integrations to replace simulated operational tables
+- Authenticated partner data pipelines with access control
+- Real-time scheduled ingestion of crisis and resource updates
+- Geospatial routing with road-closure and security constraints
+- Human-in-the-loop validation workflows for transfers and forecasts
+- Model evaluation on real historical partner data where available
 
 ## Current Enhancement: OR-Tools Optimized Transfers
 
 The **Optimized Transfer Plan** complements baseline deterministic reallocation recommendations:
 
-- **Google OR-Tools** solves a minimum-cost transport problem with supply, demand, and non-negativity constraints
-- **Same-country routes** receive lower simulated unit costs; **cross-country fallback** routes use higher costs
-- **Distance-based cost** uses zone coordinates when available; otherwise a simple simulated distance is applied
-- Optimization cost is based on simulated distance and logistics assumptions for demonstration purposes. Values are relative cost units, not real-world USD estimates.
+- **Google OR-Tools minimizes relative simulated transport cost** under supply, demand, and non-negativity constraints
+- **Transfers are generated from surplus zones to shortage zones**, matched by resource type
+- **Same-country routes are prioritized** where possible (lower simulated unit cost)
+- **Cross-country fallback routes are allowed but labeled lower confidence** (higher simulated unit cost)
+- **Cost values are relative simulated cost units, not real-world USD.** They are based on simulated distance and logistics assumptions for demonstration purposes
 - **Recommendations require human validation** before operational dispatch; the optimizer does not replace field coordinator judgment
 
 ## Shortage Risk Forecasting
@@ -523,9 +567,12 @@ The **Optimized Transfer Plan** complements baseline deterministic reallocation 
 A lightweight ML layer that forecasts near-term shortage severity to support proactive planning:
 
 - **Predicts 48–72 hour shortage severity** (`low` / `medium` / `high` / `critical`) for each zone and resource type.
-- **Uses disaster/resource features** (crisis type, country, resource type, shortage gap, requested vs. available quantity, fulfillment ratio, urgency, mismatch score, and crisis-context counts) with **simulated/proxy labels**, because real NGO demand-outcome labels are not publicly available.
-- **Supports early planning, not automated decision-making.** Forecasts are a prototype aid for prioritization and require human review.
-- **Complements the OR-Tools optimizer** by identifying which shortages are likely to escalate *before* recommending transfers. Optimization remains the primary planning method; forecasting adds a forward-looking risk signal. The model is trained on transparent simulated/proxy labels and is **not production-ready crisis forecasting**.
+- **Uses features** such as crisis metadata, resource type, shortage gap, fulfillment ratio, mismatch score, and urgency/severity proxies, plus country-level crisis-context counts.
+- **Uses XGBoost when available, with a safe scikit-learn `RandomForestClassifier` fallback** if XGBoost cannot be loaded, so the layer degrades gracefully.
+- **Trained on transparent simulated/proxy labels** derived from shortage severity, fulfillment ratio, urgency, and mismatch assumptions, because real NGO operational demand labels are not public.
+- **Supports early planning and prioritization; it does not automate humanitarian decisions** and is not production-ready crisis forecasting.
+
+> The forecasting model complements the OR-Tools optimizer: the model identifies which shortages are likely to escalate, while the optimizer recommends how available surplus resources could be transferred under supply, demand, and simulated transport-cost constraints.
 
 Exposed at `GET /reports/shortage-risk-forecast` and the dashboard **Shortage Risk Forecast** tab (risk summary cards, a table of forecasted high/critical-risk zones, and a bar chart of predicted risk counts by level). See **Methodology → Shortage risk forecasting** for model details.
 
@@ -536,8 +583,8 @@ CrisisResourceIntel/
 ├── .github/workflows/   # CI workflow for running tests on push and pull requests
 ├── ingestion/           # API fetchers, clean_reliefweb.py, clean_gdacs.py
 ├── database/            # Schema, loaders, sample resource generator
-├── analytics/           # Mismatch engine, reallocation, OR-Tools optimization, SQL queries
-├── ml_forecasting/      # Shortage-risk forecasting: feature_builder, train_model, predict_risk
+├── analytics/           # Mismatch scoring, reallocation, OR-Tools resource transfer optimization, SQL queries
+├── ml_forecasting/      # XGBoost shortage-risk forecasting and proxy-label generation
 ├── models/              # Persisted ML artifacts (shortage_risk_model.joblib)
 ├── backend/             # FastAPI application
 ├── dashboard/           # Streamlit UI
@@ -560,7 +607,7 @@ The suite is lightweight and runs locally without external APIs, Render services
 - **API tests** use FastAPI's `TestClient` (root and `/health` always run; `/reports/overview`, `/mismatches/optimized-transfers`, and `/reports/shortage-risk-forecast` skip or fall back gracefully when PostgreSQL or sample data is unavailable).
 - **Analytics tests** cover the mismatch and reallocation engines as pure functions (shortage/surplus/stable status, urgency weighting, same-country vs. cross-country confidence, resource-type matching).
 - **Optimization tests** validate the OR-Tools engine result shape and constraints, skipping if `ortools` is not installed.
-- **ML forecasting tests** cover training-data generation, proxy-label creation, and the prediction output schema using in-memory data (no database or live services), skipping model-dependent checks if scikit-learn is unavailable.
+- **ML forecasting tests** cover feature-builder output, proxy-label creation, the XGBoost/proxy prediction output schema (valid risk levels, confidence in `[0, 1]`), and graceful fallback when the model artifact is missing — all using in-memory data (no database or live services), skipping model-dependent checks if scikit-learn is unavailable.
 - **RAG fallback tests** exercise keyword/hosted-mode context building without Ollama.
 - **Config tests** verify API base URL resolution and that database URLs are masked so passwords are never exposed.
 
