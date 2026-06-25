@@ -1,0 +1,23 @@
+flowchart LR
+    RW[ReliefWeb API] --> ING[Ingestion / ETL Pipeline]
+    GD[GDACS RSS Feeds] --> ING
+
+    ING --> PG[(PostgreSQL + pgvector)]
+
+    PG --> MISMATCH[Mismatch Scoring Engine]
+    PG --> RETRIEVAL[Retrieval-Based Crisis Context]
+    PG --> API[FastAPI Backend]
+
+    MISMATCH --> OPT[OR-Tools Optimization Engine]
+    OPT --> API
+    RETRIEVAL --> API
+
+    OLLAMA[Local Ollama<br/>Optional Semantic Retrieval + AI Briefings] -. local demo only .-> RETRIEVAL
+    OLLAMA -. local demo only .-> API
+
+    API --> DASH[Streamlit Dashboard]
+
+    DASH --> KPIS[KPI Overview]
+    DASH --> MAPS[Operational Map]
+    DASH --> REPORTS[Situation Reports & Zone Briefings]
+    DASH --> RECS[Baseline + Optimized Transfer Plans]

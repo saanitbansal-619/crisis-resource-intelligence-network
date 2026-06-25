@@ -1,5 +1,9 @@
 # Crisis Resource Intelligence Network
 
+[![Tests](https://github.com/saanitbansal-619/crisis-resource-intelligence-network/actions/workflows/tests.yml/badge.svg)](https://github.com/saanitbansal-619/crisis-resource-intelligence-network/actions/workflows/tests.yml)
+![Python](https://img.shields.io/badge/python-3.11-blue)
+![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
+
 ## Overview
 
 Humanitarian crises create uneven demand for food, water, shelter, medical supplies, and personnel. Public sources such as ReliefWeb and GDACS publish alerts and situation reports, but turning that information into actionable resource intelligence requires ingestion, normalization, analytics, and accessible decision-support tooling.
@@ -59,47 +63,15 @@ This is a **portfolio prototype**, not a production emergency response system.
 
 ## Architecture
 
-```text
-                    ┌─────────────────┐        ┌─────────────────┐
-                    │    ReliefWeb    │        │      GDACS      │
-                    │      API        │        │    RSS Feeds    │
-                    └────────┬────────┘        └────────┬────────┘
-                             │                          │
-                             └────────────┬─────────────┘
-                                          │
-                                 ┌────────▼────────┐
-                                 │   Ingestion     │
-                                 │  ETL Pipeline   │
-                                 └────────┬────────┘
-                                          │
-                                 ┌────────▼────────┐
-                                 │  PostgreSQL +   │
-                                 │    pgvector     │
-                                 └─────┬─────┬─────┘
-                                       │     │
-                         ┌─────────────┘     └─────────────┐
-                         │                                 │
-                 ┌───────▼────────┐              ┌────────▼────────┐
-                 │ Mismatch       │              │ Retrieval-Based │
-                 │ Scoring Engine │              │ Crisis Context  │
-                 └───────┬────────┘              └────────┬────────┘
-                         │                                │
-                 ┌───────▼────────┐              ┌────────▼────────┐
-                 │ OR-Tools       │              │ Local Ollama    │
-                 │ Optimization   │              │ AI Briefings    │
-                 └───────┬────────┘              │ Optional        │
-                         │                       └────────┬────────┘
-                         └──────────────┬────────────────┘
-                                        │
-                               ┌────────▼────────┐
-                               │ FastAPI Backend │
-                               └────────┬────────┘
-                                        │
-                               ┌────────▼────────┐
-                               │ Streamlit UI    │
-                               │ Maps • Reports  │
-                               │ Recommendations │
-                               └─────────────────┘
+![Architecture Diagram](docs/architecture/architecture.svg)
+
+This diagram shows the end-to-end system flow from public crisis-data ingestion through PostgreSQL-backed analytics, retrieval, optimization, FastAPI endpoints, and the Streamlit operations dashboard. Local Ollama support is optional and used for local semantic retrieval and AI-assisted briefing drafts.
+
+The diagram source lives in [`docs/architecture/architecture.mmd`](docs/architecture/architecture.mmd). To regenerate the rendered assets with the [Mermaid CLI](https://github.com/mermaid-js/mermaid-cli):
+
+```bash
+npx @mermaid-js/mermaid-cli -i docs/architecture/architecture.mmd -o docs/architecture/architecture.svg
+npx @mermaid-js/mermaid-cli -i docs/architecture/architecture.mmd -o docs/architecture/architecture.png
 ```
 
 End-to-end pipeline:
@@ -127,6 +99,21 @@ ReliefWeb/GDACS crisis records
   → fallback labeling
   → local LLM briefing generation with Ollama llama3.2
 ```
+
+## System Statistics
+
+- 2 live humanitarian data sources integrated: ReliefWeb API and GDACS RSS feeds
+- 10 crisis zones modeled in the demo database
+- 7 organizations represented across inventory and request records
+- 24 inventory records and 21 request records analyzed
+- 90 GDACS alerts ingested
+- 10 ReliefWeb crisis reports processed
+- 24 resource mismatch records generated
+- 10 optimized transfer recommendations generated
+- 9,760 total simulated units moved in the optimized transfer plan
+- 19.54M relative simulated transport-cost units minimized by the OR-Tools optimizer
+
+Statistics reflect the deployed portfolio/demo dataset and may vary when the ingestion pipeline is rerun.
 
 ## Dashboard Screenshots
 
@@ -504,17 +491,19 @@ The **Optimized Transfer Plan** complements baseline deterministic reallocation 
 
 ```
 CrisisResourceIntel/
-├── ingestion/       # API fetchers, clean_reliefweb.py, clean_gdacs.py
-├── database/        # Schema, loaders, sample resource generator
-├── analytics/       # Mismatch engine, reallocation, OR-Tools optimization, SQL queries
-├── backend/         # FastAPI application
-├── dashboard/       # Streamlit UI
-├── scripts/         # Demo health check and utilities
-├── ml/              # Shortage-risk prediction (future)
-├── rag/             # Corpus, embeddings, hybrid retrieval, LLM briefing
-├── data/            # Raw, processed, and sample data
-├── docs/            # Architecture and dev notes
-└── tests/           # pytest suite for API, analytics, optimization, and config checks
+├── .github/workflows/   # CI workflow for running tests on push and pull requests
+├── ingestion/           # API fetchers, clean_reliefweb.py, clean_gdacs.py
+├── database/            # Schema, loaders, sample resource generator
+├── analytics/           # Mismatch engine, reallocation, OR-Tools optimization, SQL queries
+├── backend/             # FastAPI application
+├── dashboard/           # Streamlit UI
+├── scripts/             # Demo health check and utilities
+├── ml/                  # Shortage-risk prediction (future)
+├── rag/                 # Corpus, embeddings, hybrid retrieval, LLM briefing
+├── data/                # Raw, processed, and sample data
+├── docs/                # Architecture and dev notes
+├── docs/architecture/   # architecture diagram source and rendered assets
+└── tests/               # pytest suite for API, analytics, optimization, RAG fallback, and config checks
 ```
 
 ## Running Tests
