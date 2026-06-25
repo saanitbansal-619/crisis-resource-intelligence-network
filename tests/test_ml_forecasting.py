@@ -227,3 +227,89 @@ def test_predict_with_missing_model_path_raises(tmp_path) -> None:
 
     with pytest.raises(ModelUnavailableError):
         predict_shortage_risk([_raw_row()], model_path=tmp_path / "missing.joblib")
+
+
+# --- Model evaluation metrics -------------------------------------------------
+
+
+def _training_frame_for_eval():
+    """A slightly larger, multi-class in-memory frame for evaluation tests."""
+    records = []
+    # Enough samples per class for a non-degenerate split.
+    for _ in range(6):
+        records.append(_raw_row(shortage_gap=3000, available_quantity=10, request_quantity=3010, urgency_level="critical", mismatch_score=6000, resource_type="insulin"))
+        records.append(_raw_row(shortage_gap=-100, available_quantity=600, request_quantity=500, urgency_level="low", mismatch_score=0, resource_type="food_kits"))
+        records.append(_raw_row(shortage_gap=300, available_quantity=350, request_quantity=500, urgency_level="medium", mismatch_score=200, resource_type="blankets"))
+        records.append(_raw_row(shortage_gap=400, available_quantity=180, request_quantity=500, urgency_level="low", mismatch_score=50, resource_type="tarps"))
+    return build_feature_frame(records, include_label=True)
+
+
+@pytest.fixture(scope="module")
+def metrics_artifact(tmp_path_factory):
+    pytest.importorskip("sklearn")
+    from ml_forecasting.train_model import train_and_save_model
+
+    tmp_dir = tmp_path_factory.mktemp("model_eval")
+    result = train_and_save_model(
+        training_frame=_training_frame_for_eval(),
+        model_path=tmp_dir / "model.joblib",
+        metrics_path=tmp_dir / "metrics.json",
+    )
+    return result["metrics"], tmp_dir / "metrics.json"
+
+
+def test_metrics_json_is_generated(metrics_artifact) -> None:
+    _, metrics_path = metrics_artifact
+    assert metrics_path.exists()
+
+
+def test_metrics_artifact_has_expected_keys(metrics_artifact) -> None:
+    metrics, _ = metrics_artifact
+    expected = {
+        "model_type",
+        "label_type",
+        "test_size",
+        "random_state",
+        "accuracy",
+        "macro_precision",
+        "macro_recall",
+        "macro_f1",
+        "weighted_f1",
+        "roc_auc_ovr_macro",
+        "classification_report",
+        "confusion_matrix",
+        "class_labels",
+        "evaluation_note",
+    }
+    assert expected <= set(metrics)
+
+
+def test_metric_values_between_zero_and_one_when_not_null(metrics_artifact) -> None:
+    metrics, _ = metrics_artifact
+    for key in ("accuracy", "macro_precision", "macro_recall", "macro_f1", "weighted_f1", "roc_auc_ovr_macro"):
+        value = metrics.get(key)
+        if value is not None:
+            assert 0.0 <= float(value) <= 1.0
+
+
+def test_evaluation_note_mentions_proxy_labels(metrics_artifact) -> None:
+    metrics, _ = metrics_artifact
+    note = metrics["evaluation_note"].lower()
+    assert "proxy" in note or "simulated" in note
+    assert metrics["label_type"] == "simulated/proxy operational labels"
+
+
+def test_load_model_evaluation_missing_returns_none(tmp_path) -> None:
+    from ml_forecasting.predict_risk import load_model_evaluation
+
+    assert load_model_evaluation(tmp_path / "no_metrics.json") is None
+
+
+def test_load_model_evaluation_reads_summary(metrics_artifact) -> None:
+    from ml_forecasting.predict_risk import load_model_evaluation
+
+    _, metrics_path = metrics_artifact
+    summary = load_model_evaluation(metrics_path)
+    assert summary is not None
+    assert summary["label_type"] == "simulated/proxy operational labels"
+    assert "macro_f1" in summary

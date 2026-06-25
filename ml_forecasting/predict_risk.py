@@ -17,7 +17,12 @@ from ml_forecasting.feature_builder import (
     RISK_LEVELS,
     build_feature_frame,
 )
-from ml_forecasting.train_model import MODEL_PATH
+from ml_forecasting.train_model import METRICS_PATH, MODEL_PATH
+
+METRICS_UNAVAILABLE_MESSAGE = (
+    "Model evaluation metrics unavailable. Run python -m ml_forecasting.train_model "
+    "to generate metrics."
+)
 
 METHOD_NOTE = (
     "Prototype shortage-risk model trained on simulated/proxy operational labels "
@@ -49,6 +54,41 @@ def load_model(model_path: Path | str = MODEL_PATH) -> dict:
     if not isinstance(bundle, dict) or "pipeline" not in bundle:
         raise ModelUnavailableError("Shortage-risk model artifact is invalid.")
     return bundle
+
+
+def load_model_evaluation(metrics_path: Path | str = METRICS_PATH) -> dict | None:
+    """Load a compact model-evaluation summary from the metrics JSON.
+
+    Returns None when the metrics file is missing or unreadable so callers can
+    show a graceful message instead of failing.
+    """
+    import json
+
+    path = Path(metrics_path)
+    if not path.exists():
+        return None
+    try:
+        with path.open(encoding="utf-8") as handle:
+            data = json.load(handle)
+    except Exception:  # pragma: no cover - corrupt artifact
+        return None
+
+    summary = {
+        "model_type": data.get("model_type"),
+        "label_type": data.get("label_type"),
+        "test_size": data.get("test_size"),
+        "n_test_samples": data.get("n_test_samples"),
+        "accuracy": data.get("accuracy"),
+        "macro_precision": data.get("macro_precision"),
+        "macro_recall": data.get("macro_recall"),
+        "macro_f1": data.get("macro_f1"),
+        "weighted_f1": data.get("weighted_f1"),
+        "roc_auc_ovr_macro": data.get("roc_auc_ovr_macro"),
+        "evaluation_note": data.get("evaluation_note"),
+    }
+    if data.get("roc_auc_note"):
+        summary["roc_auc_note"] = data["roc_auc_note"]
+    return summary
 
 
 def escalate_risk_level(level: str) -> str:

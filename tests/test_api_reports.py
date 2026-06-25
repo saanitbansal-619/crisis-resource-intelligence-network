@@ -107,6 +107,18 @@ def test_shortage_risk_forecast_response_shape(client: TestClient) -> None:
     assert isinstance(body["forecasts"], list)
     assert "summary" in body
 
+    # model_evaluation is always present: either metrics or a graceful message.
+    assert "model_evaluation" in body
+    evaluation = body["model_evaluation"]
+    assert isinstance(evaluation, dict)
+    if "message" in evaluation:
+        assert "train_model" in evaluation["message"]
+    else:
+        for key in ("accuracy", "macro_f1", "weighted_f1", "roc_auc_ovr_macro"):
+            value = evaluation.get(key)
+            if value is not None:
+                assert 0.0 <= float(value) <= 1.0
+
     valid_levels = {"low", "medium", "high", "critical"}
 
     if body.get("model_available") and body["forecasts"]:

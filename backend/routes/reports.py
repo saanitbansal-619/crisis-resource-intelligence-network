@@ -22,7 +22,9 @@ from ml_forecasting.feature_builder import (
 )
 from ml_forecasting.predict_risk import (
     METHOD_NOTE as SHORTAGE_RISK_METHOD_NOTE,
+    METRICS_UNAVAILABLE_MESSAGE as SHORTAGE_RISK_METRICS_UNAVAILABLE_MESSAGE,
     ModelUnavailableError,
+    load_model_evaluation,
     predict_shortage_risk,
 )
 from rag.llm_briefing import (
@@ -855,11 +857,19 @@ def get_shortage_risk_forecast(db: Session = Depends(get_db)) -> dict:
     Gracefully reports unavailability when the trained model or feature data is
     missing, instead of raising a server error.
     """
+    evaluation = load_model_evaluation()
+    model_evaluation = (
+        evaluation
+        if evaluation is not None
+        else {"message": SHORTAGE_RISK_METRICS_UNAVAILABLE_MESSAGE}
+    )
+
     base_response = {
         "status": "unavailable",
         "model_available": False,
         "model_note": SHORTAGE_RISK_METHOD_NOTE,
         "feature_note": SHORTAGE_RISK_FEATURE_NOTE,
+        "model_evaluation": model_evaluation,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "summary": _summarize_forecasts([]),
         "forecasts": [],
@@ -924,6 +934,7 @@ def get_shortage_risk_forecast(db: Session = Depends(get_db)) -> dict:
         "model_available": True,
         "model_note": SHORTAGE_RISK_METHOD_NOTE,
         "feature_note": SHORTAGE_RISK_FEATURE_NOTE,
+        "model_evaluation": model_evaluation,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "summary": _summarize_forecasts(forecasts),
         "forecasts": forecasts,

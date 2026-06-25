@@ -3241,6 +3241,51 @@ def _risk_forecast_table(forecasts: list[dict]) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+MODEL_EVALUATION_NOTE = (
+    "Evaluation metrics are measured on a train/test split of simulated/proxy shortage-risk "
+    "labels, not real NGO ground-truth outcomes."
+)
+
+
+def _format_metric_percent(value) -> str:
+    if value is None:
+        return "N/A"
+    try:
+        return f"{float(value) * 100:.0f}%"
+    except (TypeError, ValueError):
+        return "N/A"
+
+
+def _render_model_evaluation(evaluation: dict | None) -> None:
+    st.markdown(
+        '<div class="subsection-header" style="margin-top: 1rem;">Model Evaluation</div>',
+        unsafe_allow_html=True,
+    )
+
+    if not evaluation or evaluation.get("message"):
+        st.info(
+            (evaluation or {}).get("message")
+            or "Model evaluation metrics unavailable. Run python -m ml_forecasting.train_model "
+            "to generate metrics."
+        )
+        return
+
+    cols = st.columns(4)
+    cols[0].metric("Accuracy", _format_metric_percent(evaluation.get("accuracy")))
+    cols[1].metric("Macro F1", _format_metric_percent(evaluation.get("macro_f1")))
+    cols[2].metric("Weighted F1", _format_metric_percent(evaluation.get("weighted_f1")))
+    cols[3].metric("ROC-AUC (OvR)", _format_metric_percent(evaluation.get("roc_auc_ovr_macro")))
+
+    roc_note = (evaluation.get("roc_auc_note") or "").strip()
+    if evaluation.get("roc_auc_ovr_macro") is None and roc_note:
+        st.caption(roc_note)
+
+    st.markdown(
+        f'<p class="zone-brief-transparency">{html.escape(MODEL_EVALUATION_NOTE)}</p>',
+        unsafe_allow_html=True,
+    )
+
+
 def render_risk_forecast_tab(base_url: str) -> None:
     st.markdown('<div class="section-header">Shortage Risk Forecast</div>', unsafe_allow_html=True)
     st.markdown(
@@ -3331,6 +3376,8 @@ def render_risk_forecast_tab(base_url: str) -> None:
         )
         st.plotly_chart(fig, use_container_width=True)
         render_content_card_end()
+
+    _render_model_evaluation(data.get("model_evaluation"))
 
     with st.expander("View all shortage-risk forecasts", expanded=False):
         st.dataframe(

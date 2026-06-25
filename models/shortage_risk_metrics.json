@@ -1,0 +1,90 @@
+{
+  "model_type": "XGBoostClassifier",
+  "label_type": "simulated/proxy operational labels",
+  "n_samples": 24,
+  "n_test_samples": 6,
+  "test_size": 0.25,
+  "random_state": 42,
+  "stratified": false,
+  "evaluation_basis": "train_test_split",
+  "accuracy": 1.0,
+  "macro_precision": 0.75,
+  "macro_recall": 0.75,
+  "macro_f1": 0.75,
+  "weighted_f1": 1.0,
+  "roc_auc_ovr_macro": null,
+  "classification_report": {
+    "low": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 4.0
+    },
+    "medium": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 1.0
+    },
+    "high": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1-score": 0.0,
+      "support": 0.0
+    },
+    "critical": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 1.0
+    },
+    "accuracy": 1.0,
+    "macro avg": {
+      "precision": 0.75,
+      "recall": 0.75,
+      "f1-score": 0.75,
+      "support": 6.0
+    },
+    "weighted avg": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 6.0
+    }
+  },
+  "confusion_matrix": [
+    [
+      4,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      1,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      1
+    ]
+  ],
+  "class_labels": [
+    "low",
+    "medium",
+    "high",
+    "critical"
+  ],
+  "trained_at": "2026-06-25T10:57:36.788994+00:00",
+  "evaluation_note": "Metrics are measured against simulated/proxy shortage-risk labels derived from shortage gap, fulfillment ratio, urgency, and mismatch assumptions, not real NGO ground-truth outcomes.",
+  "roc_auc_note": "ROC-AUC unavailable: not all classes are represented in the held-out test split (class imbalance in the small proxy dataset)."
+}

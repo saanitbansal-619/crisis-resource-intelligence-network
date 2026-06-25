@@ -576,6 +576,23 @@ A lightweight ML layer that forecasts near-term shortage severity to support pro
 
 Exposed at `GET /reports/shortage-risk-forecast` and the dashboard **Shortage Risk Forecast** tab (risk summary cards, a table of forecasted high/critical-risk zones, and a bar chart of predicted risk counts by level). See **Methodology → Shortage risk forecasting** for model details.
 
+### Model Evaluation
+
+The model is evaluated on a held-out **train/test split** (`test_size=0.25`, `random_state=42`, with stratification when class counts allow and a graceful non-stratified fallback otherwise). Metrics are written to `models/shortage_risk_metrics.json` during training and surfaced through the API (`model_evaluation`) and the dashboard **Model Evaluation** cards.
+
+On the current demo dataset, the XGBoost shortage-risk classifier achieved the following on the held-out test split of **simulated/proxy** labels:
+
+| Metric | Value |
+|--------|-------|
+| Accuracy | 1.00 |
+| Macro precision | 0.75 |
+| Macro recall | 0.75 |
+| Macro F1 | 0.75 |
+| Weighted F1 | 1.00 |
+| ROC-AUC (OvR macro) | unavailable |
+
+These metrics validate the modeling pipeline and feature logic, but they should **not** be interpreted as real-world humanitarian forecasting accuracy. The demo dataset is small (24 rows; a 6-row test split), so the macro scores are dominated by sparsely represented classes and **ROC-AUC is unavailable because not all classes appear in the test split** (recorded transparently in the metrics file). All metrics are measured against simulated/proxy shortage-risk labels derived from shortage gap, fulfillment ratio, urgency, and mismatch assumptions — not real NGO ground-truth outcomes. Re-running training regenerates `models/shortage_risk_metrics.json`, and these numbers will change with the dataset.
+
 ## Project Structure
 
 ```
@@ -585,7 +602,7 @@ CrisisResourceIntel/
 ├── database/            # Schema, loaders, sample resource generator
 ├── analytics/           # Mismatch scoring, reallocation, OR-Tools resource transfer optimization, SQL queries
 ├── ml_forecasting/      # XGBoost shortage-risk forecasting and proxy-label generation
-├── models/              # Persisted ML artifacts (shortage_risk_model.joblib)
+├── models/              # Persisted ML artifacts (shortage_risk_model.joblib, shortage_risk_metrics.json)
 ├── backend/             # FastAPI application
 ├── dashboard/           # Streamlit UI
 ├── scripts/             # Demo health check and utilities
